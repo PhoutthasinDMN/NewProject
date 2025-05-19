@@ -2,10 +2,11 @@
 require_once '../includes/config.php';
 require_once '../includes/db.php';
 require_once '../includes/functions.php';
+require_once 'auth_service.php';
 
 // ถ้าล็อกอินอยู่แล้วให้ redirect ไปหน้า dashboard
 if (isLoggedIn()) {
-    header("Location: index.php");
+    header("Location: ../dashboard/index.php");
     exit;
 }
 
@@ -16,53 +17,18 @@ $email_username = '';
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $email_username = sanitize($_POST['email-username']);
     $password = $_POST['password'];
+    $remember = isset($_POST['remember-me']) ? true : false;
     
-    // ตรวจสอบว่าข้อมูลถูกกรอกหรือไม่
-    if (empty($email_username) || empty($password)) {
-        $error = alert("กรุณากรอกอีเมล/ชื่อผู้ใช้และรหัสผ่าน", "danger");
+    // ใช้ฟังก์ชัน loginUser จาก auth_service.php
+    $result = loginUser($email_username, $password, $remember);
+    
+    if ($result['success']) {
+        // ล็อกอินสำเร็จ ไปที่หน้า dashboard
+        header("Location: ../dashboard/index.php");
+        exit;
     } else {
-        // ตรวจสอบว่าเป็นอีเมลหรือชื่อผู้ใช้
-        $field = filter_var($email_username, FILTER_VALIDATE_EMAIL) ? 'email' : 'username';
-        
-        // ค้นหาผู้ใช้ในฐานข้อมูล
-        $sql = "SELECT id, username, email, password FROM users WHERE $field = ?";
-        $stmt = $conn->prepare($sql);
-        $stmt->bind_param("s", $email_username);
-        $stmt->execute();
-        $result = $stmt->get_result();
-        
-        if ($result->num_rows == 1) {
-            $user = $result->fetch_assoc();
-            
-            // ตรวจสอบรหัสผ่าน
-            if (password_verify($password, $user['password'])) {
-                // รหัสผ่านถูกต้อง, ทำการล็อกอิน
-                $_SESSION['user_id'] = $user['id'];
-                $_SESSION['username'] = $user['username'];
-                $_SESSION['email'] = $user['email'];
-                
-                // จำไว้ในคุกกี้ถ้าผู้ใช้เลือก "Remember Me"
-                if (isset($_POST['remember-me'])) {
-                    $token = bin2hex(random_bytes(16));
-                    setcookie("remember_token", $token, time() + (86400 * 30), "/"); // 30 วัน
-                    
-                    // บันทึก token ในฐานข้อมูล (ต้องมีคอลัมน์ remember_token ในตาราง users)
-                    $sql = "UPDATE users SET remember_token = ? WHERE id = ?";
-                    $stmt = $conn->prepare($sql);
-                    $stmt->bind_param("si", $token, $user['id']);
-                    $stmt->execute();
-                }
-                
-                header("Location: index.php");
-                exit;
-            } else {
-                // รหัสผ่านไม่ถูกต้อง
-                $error = alert("อีเมล/ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง", "danger");
-            }
-        } else {
-            // ไม่พบผู้ใช้
-            $error = alert("อีเมล/ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง", "danger");
-        }
+        // ล็อกอินไม่สำเร็จ แสดงข้อความผิดพลาด
+        $error = alert($result['message'], "danger");
     }
 }
 ?>

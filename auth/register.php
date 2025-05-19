@@ -2,6 +2,7 @@
 require_once '../includes/config.php';
 require_once '../includes/db.php';
 require_once '../includes/functions.php';
+require_once 'auth_service.php';
 
 // ถ้าล็อกอินอยู่แล้วให้ redirect ไปหน้า dashboard
 if (isLoggedIn()) {
@@ -21,43 +22,18 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $password = $_POST['password'];
     $terms = isset($_POST['terms']) ? 1 : 0;
     
-    // ตรวจสอบข้อมูลที่กรอก
-    if (empty($username) || empty($email) || empty($password)) {
-        $error = alert("กรุณากรอกข้อมูลให้ครบทุกช่อง", "danger");
-    } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-        $error = alert("รูปแบบอีเมลไม่ถูกต้อง", "danger");
-    } elseif (strlen($password) < 8) {
-        $error = alert("รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร", "danger");
-    } elseif ($terms != 1) {
-        $error = alert("กรุณายอมรับเงื่อนไขและข้อตกลง", "danger");
+    // ใช้ฟังก์ชัน registerUser จาก auth_service.php
+    $result = registerUser($username, $email, $password, $terms);
+    
+    if ($result['success']) {
+        // ลงทะเบียนสำเร็จ
+        $success = alert($result['message'], "success");
+        // ล้างข้อมูลในฟอร์ม
+        $username = '';
+        $email = '';
     } else {
-        // ตรวจสอบว่าชื่อผู้ใช้หรืออีเมลซ้ำหรือไม่
-        $sql = "SELECT id FROM users WHERE username = ? OR email = ?";
-        $stmt = $conn->prepare($sql);
-        $stmt->bind_param("ss", $username, $email);
-        $stmt->execute();
-        $result = $stmt->get_result();
-        
-        if ($result->num_rows > 0) {
-            $error = alert("ชื่อผู้ใช้หรืออีเมลนี้มีในระบบแล้ว", "danger");
-        } else {
-            // เข้ารหัสรหัสผ่าน
-            $hashed_password = password_hash($password, PASSWORD_DEFAULT);
-            
-            // บันทึกข้อมูลลงฐานข้อมูล
-            $sql = "INSERT INTO users (username, email, password) VALUES (?, ?, ?)";
-            $stmt = $conn->prepare($sql);
-            $stmt->bind_param("sss", $username, $email, $hashed_password);
-            
-            if ($stmt->execute()) {
-                $success = alert("ลงทะเบียนสำเร็จ! กรุณาเข้าสู่ระบบ", "success");
-                // ล้างข้อมูลในฟอร์ม
-                $username = '';
-                $email = '';
-            } else {
-                $error = alert("เกิดข้อผิดพลาดในการลงทะเบียน: " . $stmt->error, "danger");
-            }
-        }
+        // ลงทะเบียนไม่สำเร็จ
+        $error = alert($result['message'], "danger");
     }
 }
 ?>

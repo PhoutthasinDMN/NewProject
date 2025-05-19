@@ -2,6 +2,7 @@
 require_once '../includes/config.php';
 require_once '../includes/db.php';
 require_once '../includes/functions.php';
+require_once 'auth_service.php';
 
 $error = '';
 $success = '';
@@ -12,7 +13,7 @@ if (isset($_GET['token'])) {
     $token = $_GET['token'];
     
     // ตรวจสอบว่า token ถูกต้องและยังไม่หมดอายุหรือไม่
-    $sql = "SELECT id, email FROM users WHERE reset_token = ? AND reset_token_expires > NOW()";
+    $sql = "SELECT id FROM users WHERE reset_token = ? AND reset_token_expires > NOW()";
     $stmt = $conn->prepare($sql);
     $stmt->bind_param("s", $token);
     $stmt->execute();
@@ -30,41 +31,16 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $confirm_password = $_POST['confirm-password'];
     $token = $_POST['token'];
     
-    // ตรวจสอบว่ารหัสผ่านถูกกรอกครบถ้วนหรือไม่
-    if (empty($password) || empty($confirm_password)) {
-        $error = alert("กรุณากรอกรหัสผ่านให้ครบถ้วน", "danger");
-    } elseif (strlen($password) < 8) {
-        $error = alert("รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร", "danger");
-    } elseif ($password !== $confirm_password) {
-        $error = alert("รหัสผ่านไม่ตรงกัน", "danger");
+    // ใช้ฟังก์ชัน resetPassword จาก auth_service.php
+    $result = resetPassword($token, $password, $confirm_password);
+    
+    if ($result['success']) {
+        // รีเซ็ตรหัสผ่านสำเร็จ
+        $success = alert($result['message'], "success");
+        $token = ''; // ล้างค่า token
     } else {
-        // ตรวจสอบว่า token ถูกต้องและยังไม่หมดอายุหรือไม่
-        $sql = "SELECT id FROM users WHERE reset_token = ? AND reset_token_expires > NOW()";
-        $stmt = $conn->prepare($sql);
-        $stmt->bind_param("s", $token);
-        $stmt->execute();
-        $result = $stmt->get_result();
-        
-        if ($result->num_rows == 0) {
-            $error = alert("Token ไม่ถูกต้องหรือหมดอายุแล้ว", "danger");
-        } else {
-            $user = $result->fetch_assoc();
-            
-            // เข้ารหัสรหัสผ่านใหม่
-            $hashed_password = password_hash($password, PASSWORD_DEFAULT);
-            
-            // อัปเดตรหัสผ่านและล้าง token
-            $sql = "UPDATE users SET password = ?, reset_token = NULL, reset_token_expires = NULL WHERE id = ?";
-            $stmt = $conn->prepare($sql);
-            $stmt->bind_param("si", $hashed_password, $user['id']);
-            
-            if ($stmt->execute()) {
-                $success = alert("รีเซ็ตรหัสผ่านสำเร็จ! กรุณาเข้าสู่ระบบด้วยรหัสผ่านใหม่", "success");
-                $token = '';
-            } else {
-                $error = alert("เกิดข้อผิดพลาดในการรีเซ็ตรหัสผ่าน กรุณาลองอีกครั้ง", "danger");
-            }
-        }
+        // รีเซ็ตรหัสผ่านไม่สำเร็จ
+        $error = alert($result['message'], "danger");
     }
 }
 ?>

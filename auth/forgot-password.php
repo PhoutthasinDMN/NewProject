@@ -2,6 +2,7 @@
 require_once '../includes/config.php';
 require_once '../includes/db.php';
 require_once '../includes/functions.php';
+require_once 'auth_service.php';
 
 $error = '';
 $success = '';
@@ -11,43 +12,16 @@ $email = '';
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $email = sanitize($_POST['email']);
     
-    // ตรวจสอบว่าอีเมลถูกต้องหรือไม่
-    if (empty($email)) {
-        $error = alert("กรุณากรอกอีเมล", "danger");
-    } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-        $error = alert("รูปแบบอีเมลไม่ถูกต้อง", "danger");
+    // ใช้ฟังก์ชัน sendPasswordResetLink จาก auth_service.php
+    $result = sendPasswordResetLink($email);
+    
+    if ($result['success']) {
+        // ส่งลิงก์รีเซ็ตรหัสผ่านสำเร็จ
+        $success = alert($result['message'], "success");
+        $email = ''; // ล้างค่าอีเมล
     } else {
-        // ตรวจสอบว่ามีอีเมลนี้ในระบบหรือไม่
-        $sql = "SELECT id FROM users WHERE email = ?";
-        $stmt = $conn->prepare($sql);
-        $stmt->bind_param("s", $email);
-        $stmt->execute();
-        $result = $stmt->get_result();
-        
-        if ($result->num_rows == 0) {
-            $error = alert("ไม่พบอีเมลนี้ในระบบ", "danger");
-        } else {
-            // สร้าง token สำหรับรีเซ็ตรหัสผ่าน
-            $token = generateResetToken();
-            $expires = date('Y-m-d H:i:s', strtotime('+1 hour')); // หมดอายุใน 1 ชั่วโมง
-            
-            // บันทึก token ลงฐานข้อมูล
-            $sql = "UPDATE users SET reset_token = ?, reset_token_expires = ? WHERE email = ?";
-            $stmt = $conn->prepare($sql);
-            $stmt->bind_param("sss", $token, $expires, $email);
-            
-            if ($stmt->execute()) {
-                // ส่งอีเมลรีเซ็ตรหัสผ่าน
-                if (sendResetEmail($email, $token)) {
-                    $success = alert("ส่งลิงก์รีเซ็ตรหัสผ่านไปยังอีเมลของคุณแล้ว", "success");
-                    $email = ''; // ล้างค่าอีเมล
-                } else {
-                    $error = alert("ไม่สามารถส่งอีเมลได้ กรุณาลองอีกครั้ง", "danger");
-                }
-            } else {
-                $error = alert("เกิดข้อผิดพลาดในการดำเนินการ กรุณาลองอีกครั้ง", "danger");
-            }
-        }
+        // ส่งลิงก์รีเซ็ตรหัสผ่านไม่สำเร็จ
+        $error = alert($result['message'], "danger");
     }
 }
 ?>

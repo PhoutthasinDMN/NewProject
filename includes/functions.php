@@ -35,7 +35,7 @@ function generateResetToken() {
 // ฟังก์ชันส่งอีเมล reset password
 function sendResetEmail($email, $token) {
     $reset_link = getCurrentUrl() . "/auth/reset-password.php?token=" . $token;
-    
+
     $subject = "รีเซ็ตรหัสผ่านของคุณ";
     $message = "สวัสดีค่ะ,\n\n";
     $message .= "คุณได้รับอีเมลนี้เนื่องจากมีการขอรีเซ็ตรหัสผ่านสำหรับบัญชีของคุณ\n\n";
@@ -45,9 +45,9 @@ function sendResetEmail($email, $token) {
     $message .= "หากคุณไม่ได้ขอรีเซ็ตรหัสผ่าน โปรดเพิกเฉยต่ออีเมลนี้\n\n";
     $message .= "ขอบคุณ,\n";
     $message .= "ทีมงาน Sneat";
-    
+
     $headers = "From: noreply@sneat.com";
-    
+
     return mail($email, $subject, $message, $headers);
 }
 
@@ -57,5 +57,45 @@ function sanitize($data) {
     $data = stripslashes($data);
     $data = htmlspecialchars($data);
     return $data;
+}
+
+/**
+ * ตรวจสอบว่าผู้ใช้ปัจจุบันเป็น admin หรือไม่
+ *
+ * @return bool ผลการตรวจสอบ (true ถ้าเป็น admin)
+ */
+function isAdmin() {
+    // ถ้าไม่ได้ล็อกอิน แน่นอนว่าไม่ใช่ admin
+    if (!isLoggedIn()) {
+        return false;
+    }
+
+    global $conn;
+
+    // ตรวจสอบบทบาทจากฐานข้อมูล
+    $user_id = $_SESSION['user_id'];
+    $sql = "SELECT role FROM users WHERE id = ?";
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param("i", $user_id);
+    $stmt->execute();
+    $result = $stmt->get_result();
+
+    if ($result->num_rows == 1) {
+        $user = $result->fetch_assoc();
+        return ($user['role'] == 'admin');
+    }
+
+    return false;
+}
+
+/**
+ * บังคับให้เป็น admin ก่อนเข้าใช้งาน
+ * ถ้าไม่ใช่ admin จะ redirect ไปหน้า dashboard
+ */
+function requireAdmin() {
+    if (!isAdmin()) {
+        header("Location: ../dashboard/index.php");
+        exit;
+    }
 }
 ?>

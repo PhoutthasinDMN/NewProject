@@ -1,0 +1,61 @@
+<?php
+// ฟังก์ชันดึงค่า URL ปัจจุบัน
+function getCurrentUrl() {
+    $protocol = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? "https" : "http";
+    $host = $_SERVER['HTTP_HOST'];
+    return $protocol . "://" . $host;
+}
+
+// ฟังก์ชันตรวจสอบการล็อกอิน
+function isLoggedIn() {
+    return isset($_SESSION['user_id']);
+}
+
+// ฟังก์ชันบังคับให้ล็อกอินก่อนเข้าใช้งาน
+function requireLogin() {
+    if (!isLoggedIn()) {
+        header("Location: ../auth/login.php");
+        exit;
+    }
+}
+
+// ฟังก์ชันแสดง alert message แบบ bootstrap
+function alert($message, $type = 'primary') {
+    return '<div class="alert alert-' . $type . ' alert-dismissible" role="alert">
+                ' . $message . '
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>';
+}
+
+// ฟังก์ชันสร้าง token สำหรับ reset password
+function generateResetToken() {
+    return bin2hex(random_bytes(32));
+}
+
+// ฟังก์ชันส่งอีเมล reset password
+function sendResetEmail($email, $token) {
+    $reset_link = getCurrentUrl() . "/auth/reset-password.php?token=" . $token;
+    
+    $subject = "รีเซ็ตรหัสผ่านของคุณ";
+    $message = "สวัสดีค่ะ,\n\n";
+    $message .= "คุณได้รับอีเมลนี้เนื่องจากมีการขอรีเซ็ตรหัสผ่านสำหรับบัญชีของคุณ\n\n";
+    $message .= "โปรดคลิกลิงก์ด้านล่างเพื่อรีเซ็ตรหัสผ่านของคุณ:\n";
+    $message .= $reset_link . "\n\n";
+    $message .= "ลิงก์นี้จะหมดอายุภายใน 1 ชั่วโมง\n\n";
+    $message .= "หากคุณไม่ได้ขอรีเซ็ตรหัสผ่าน โปรดเพิกเฉยต่ออีเมลนี้\n\n";
+    $message .= "ขอบคุณ,\n";
+    $message .= "ทีมงาน Sneat";
+    
+    $headers = "From: noreply@sneat.com";
+    
+    return mail($email, $subject, $message, $headers);
+}
+
+// ฟังก์ชันทำความสะอาดข้อมูลนำเข้า
+function sanitize($data) {
+    $data = trim($data);
+    $data = stripslashes($data);
+    $data = htmlspecialchars($data);
+    return $data;
+}
+?>

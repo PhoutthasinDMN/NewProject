@@ -20,38 +20,37 @@ $stmt->execute();
 $user = $stmt->get_result()->fetch_assoc();
 $isAdmin = ($user['role'] == 'admin');
 
-// ดึงสถิติต่างๆ (อัปเดตให้รวมพยาบาล)
+// ดึงสถิติต่างๆ (เก็บเฉพาะที่ต้องการ)
 $stats = [
     'patients' => $conn->query("SELECT COUNT(*) as count FROM patients")->fetch_assoc()['count'],
     'records' => $conn->query("SELECT COUNT(*) as count FROM medical_records")->fetch_assoc()['count'],
     'doctors' => $conn->query("SELECT COUNT(*) as count FROM doctors")->fetch_assoc()['count'],
-    'nurses' => $conn->query("SELECT COUNT(*) as count FROM nurses WHERE status = 'Active'")->fetch_assoc()['count'],
     'appointments' => $conn->query("SELECT COUNT(*) as count FROM medical_records WHERE next_appointment > NOW()")->fetch_assoc()['count']
 ];
 
-// ดึงข้อมูลล่าสุด (เพิ่มพยาบาล)
+// ดึงข้อมูลล่าสุด (เฉพาะที่ต้องการ)
 $recent_patients = $conn->query("SELECT id, first_name, last_name, age, phone, created_at FROM patients ORDER BY created_at DESC LIMIT 5")->fetch_all(MYSQLI_ASSOC);
 $recent_records = $conn->query("SELECT mr.id, mr.diagnosis, mr.visit_date, p.first_name, p.last_name FROM medical_records mr JOIN patients p ON mr.patient_id = p.id ORDER BY mr.visit_date DESC LIMIT 5")->fetch_all(MYSQLI_ASSOC);
-$recent_doctors = $conn->query("SELECT id, first_name, last_name, specialization, phone, created_at FROM doctors ORDER BY created_at DESC LIMIT 5")->fetch_all(MYSQLI_ASSOC);
-$recent_nurses = $conn->query("SELECT id, first_name, last_name, department, position, created_at FROM nurses WHERE status = 'Active' ORDER BY created_at DESC LIMIT 5")->fetch_all(MYSQLI_ASSOC);
 $upcoming_appointments = $conn->query("SELECT mr.next_appointment, mr.diagnosis, p.first_name, p.last_name FROM medical_records mr JOIN patients p ON mr.patient_id = p.id WHERE mr.next_appointment > NOW() ORDER BY mr.next_appointment LIMIT 5")->fetch_all(MYSQLI_ASSOC);
 
-// สถิติ BMI
-$bmi_stats = $conn->query("SELECT 
-    COUNT(CASE WHEN bmi < 18.5 THEN 1 END) as underweight,
-    COUNT(CASE WHEN bmi >= 18.5 AND bmi < 25 THEN 1 END) as normal,
-    COUNT(CASE WHEN bmi >= 25 AND bmi < 30 THEN 1 END) as overweight,
-    COUNT(CASE WHEN bmi >= 30 THEN 1 END) as obese
-    FROM medical_records WHERE bmi IS NOT NULL")->fetch_assoc();
+// สถิติผู้ป่วยรายวัน (30 วันล่าสุด)
+$daily_patients = $conn->query("SELECT 
+    DATE(created_at) as date,
+    COUNT(*) as count
+    FROM patients 
+    WHERE created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+    GROUP BY DATE(created_at)
+    ORDER BY date")->fetch_all(MYSQLI_ASSOC);
 
-// สถิติรายเดือน
-$monthly_stats = $conn->query("SELECT 
+// สถิติผู้ป่วยรายเดือน (12 เดือนล่าสุด)
+$monthly_patients = $conn->query("SELECT 
+    YEAR(created_at) as year,
     MONTH(created_at) as month,
     COUNT(*) as count
     FROM patients 
-    WHERE YEAR(created_at) = YEAR(NOW())
-    GROUP BY MONTH(created_at)
-    ORDER BY month")->fetch_all(MYSQLI_ASSOC);
+    WHERE created_at >= DATE_SUB(NOW(), INTERVAL 12 MONTH)
+    GROUP BY YEAR(created_at), MONTH(created_at)
+    ORDER BY year, month")->fetch_all(MYSQLI_ASSOC);
 
 // Include Header และ Sidebar
 include '../includes/header.php';
@@ -60,29 +59,26 @@ include '../includes/sidebar.php';
 
 <!-- Layout Page -->
 <div class="layout-page">
-    <?php include '../includes/navbar.php'; ?>
-
+  
     <!-- Content wrapper -->
     <div class="content-wrapper">
         <div class="container-xxl flex-grow-1 container-p-y">
             
-            <!-- Welcome Banner -->
-            <div class="welcome-banner">
-                <div class="row align-items-center">
-                    <div class="col-md-8">
-                        <h2 class="mb-3">Welcome back, <?php echo htmlspecialchars($user['username']); ?>! 🎉</h2>
-                        <p class="mb-4 fs-5">Medical Dashboard - Comprehensive patient management system</p>
-                        <div class="d-flex gap-3 flex-wrap">
-                            <a href="../patients/patients_action.php?action=add" class="btn btn-light btn-lg">
-                                <i class="bx bx-plus me-2"></i>Add New Patient
-                            </a>
-                            <a href="../patients/medical_records_action.php?action=add" class="btn btn-outline-light btn-lg">
-                                <i class="bx bx-file-plus me-2"></i>New Medical Record
-                            </a>
+            <!-- Page Header -->
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div>
+                    <h4 class="mb-1">Dashboard</h4>
+                    <p class="text-muted mb-0">Welcome back, <?php echo htmlspecialchars($user['username']); ?>! Here's what's happening today.</p>
+                </div>
+                <div class="d-flex align-items-center gap-3">
+                    <div class="d-flex align-items-center">
+                        <div class="avatar avatar-md me-3">
+                            <img src="<?php echo $assets_path; ?>img/avatars/1.png" alt="Avatar" class="rounded-circle" width="40" height="40">
                         </div>
-                    </div>
-                    <div class="col-md-4 text-center">
-                        <i class="bx bx-health display-1 text-white-50"></i>
+                        <div>
+                            <h6 class="mb-0"><?php echo htmlspecialchars($user['username']); ?></h6>
+                            <small class="text-muted"><?php echo htmlspecialchars($user['email']); ?></small>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -115,7 +111,7 @@ include '../includes/sidebar.php';
             <!-- Activity Section -->
             <div class="row mb-5">
                 <!-- Recent Patients -->
-                <div class="col-lg-3 mb-4">
+                <div class="col-lg-4 mb-4">
                     <div class="activity-card">
                         <div class="activity-header">
                             <div class="d-flex justify-content-between align-items-center">
@@ -155,54 +151,13 @@ include '../includes/sidebar.php';
                     </div>
                 </div>
 
-                <!-- Recent Doctors -->
-                <div class="col-lg-3 mb-4">
-                    <div class="activity-card">
-                        <div class="activity-header">
-                            <div class="d-flex justify-content-between align-items-center">
-                                <h6 class="mb-0"><i class="bx bx-user-check me-2 text-warning"></i>Recent Doctors</h6>
-                                <a href="../doctors/doctors.php" class="btn btn-sm btn-warning">View All</a>
-                            </div>
-                        </div>
-                        <div class="activity-body">
-                            <?php if (empty($recent_doctors)): ?>
-                                <div class="text-center py-4">
-                                    <i class="bx bx-user-check display-2 text-muted"></i>
-                                    <p class="mt-2 text-muted small">No doctors yet</p>
-                                </div>
-                            <?php else: ?>
-                                <?php foreach ($recent_doctors as $doctor): ?>
-                                <div class="activity-item-enhanced">
-                                    <div class="d-flex align-items-center">
-                                        <div class="patient-avatar-large" style="background: linear-gradient(135deg, #ffc107, #e0a800);">
-                                            <?php echo strtoupper(substr($doctor['first_name'], 0, 1) . substr($doctor['last_name'], 0, 1)); ?>
-                                        </div>
-                                        <div class="flex-grow-1">
-                                            <a href="../doctors/doctor_view.php?id=<?php echo $doctor['id']; ?>" class="text-decoration-none">
-                                                <h6 class="mb-1 fw-bold">Dr. <?php echo htmlspecialchars($doctor['first_name'] . ' ' . $doctor['last_name']); ?></h6>
-                                            </a>
-                                            <div class="d-flex justify-content-between align-items-center">
-                                                <small class="text-muted">
-                                                    <i class="bx bx-briefcase me-1"></i><?php echo htmlspecialchars($doctor['specialization']); ?>
-                                                </small>
-                                                <span class="badge bg-light text-dark"><?php echo date('M j', strtotime($doctor['created_at'])); ?></span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                                <?php endforeach; ?>
-                            <?php endif; ?>
-                        </div>
-                    </div>
-                </div>
-
                 <!-- Recent Medical Records -->
-                <div class="col-lg-3 mb-4">
+                <div class="col-lg-4 mb-4">
                     <div class="activity-card">
                         <div class="activity-header">
                             <div class="d-flex justify-content-between align-items-center">
                                 <h6 class="mb-0"><i class="bx bx-file me-2 text-success"></i>Recent Records</h6>
-                                <a href="../patients/medical_records.php" class="btn btn-sm btn-success">View All</a>
+                                <a href="../medical_records/medical_records_action.php" class="btn btn-sm btn-success">View All</a>
                             </div>
                         </div>
                         <div class="activity-body">
@@ -219,7 +174,7 @@ include '../includes/sidebar.php';
                                             <?php echo strtoupper(substr($record['first_name'], 0, 1) . substr($record['last_name'], 0, 1)); ?>
                                         </div>
                                         <div class="flex-grow-1">
-                                            <a href="../patients/medical_records_action.php?action=view&id=<?php echo $record['id']; ?>" class="text-decoration-none">
+                                            <a href="../medical_records/medical_record_view.php?id=<?php echo $record['id']; ?>" class="text-decoration-none">
                                                 <h6 class="mb-1 fw-bold"><?php echo htmlspecialchars($record['first_name'] . ' ' . $record['last_name']); ?></h6>
                                             </a>
                                             <div class="d-flex justify-content-between align-items-center">
@@ -238,7 +193,7 @@ include '../includes/sidebar.php';
                 </div>
 
                 <!-- Upcoming Appointments -->
-                <div class="col-lg-3 mb-4">
+                <div class="col-lg-4 mb-4">
                     <div class="activity-card">
                         <div class="activity-header">
                             <div class="d-flex justify-content-between align-items-center">
@@ -284,50 +239,25 @@ include '../includes/sidebar.php';
 
             <!-- Charts Section -->
             <div class="row mb-5">
+                <!-- Daily Patients Chart -->
                 <div class="col-lg-6 mb-4">
                     <div class="chart-container">
                         <div class="d-flex justify-content-between align-items-center mb-4">
-                            <h5 class="mb-0"><i class="bx bx-bar-chart me-2 text-primary"></i>BMI Distribution</h5>
-                            <span class="badge bg-primary">Health Stats</span>
+                            <h5 class="mb-0"><i class="bx bx-trending-up me-2 text-primary"></i>Daily Patient Registrations</h5>
+                            <span class="badge bg-primary">Last 30 Days</span>
                         </div>
-                        <canvas id="bmiChart" style="max-height: 350px;"></canvas>
+                        <canvas id="dailyPatientsChart" style="max-height: 350px;"></canvas>
                     </div>
                 </div>
 
+                <!-- Monthly Patients Chart -->
                 <div class="col-lg-6 mb-4">
                     <div class="chart-container">
                         <div class="d-flex justify-content-between align-items-center mb-4">
-                            <h5 class="mb-0"><i class="bx bx-line-chart me-2 text-success"></i>Monthly Registrations</h5>
-                            <span class="badge bg-success">Trends</span>
+                            <h5 class="mb-0"><i class="bx bx-bar-chart me-2 text-success"></i>Monthly Patient Registrations</h5>
+                            <span class="badge bg-success">Last 12 Months</span>
                         </div>
-                        <canvas id="monthlyChart" style="max-height: 350px;"></canvas>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Quick Actions -->
-            <div class="row mb-5">
-                <div class="col-12">
-                    <h5 class="mb-4"><i class="bx bx-lightning me-2 text-warning"></i>Quick Actions</h5>
-                    <div class="quick-action-grid">
-                        <?php 
-                        $quick_actions = [
-                            ['href' => '../patients/patients_action.php?action=add', 'icon' => 'bx-user-plus', 'color' => 'primary', 'title' => 'Add Patient', 'desc' => 'Register new patient'],
-                            ['href' => '../doctors/doctors_action.php?action=add', 'icon' => 'bx-user-check', 'color' => 'warning', 'title' => 'Add Doctor', 'desc' => 'Register new doctor'],
-                            ['href' => '../patients/medical_records_action.php?action=add', 'icon' => 'bx-file-plus', 'color' => 'success', 'title' => 'New Record', 'desc' => 'Create medical record'],
-                            ['href' => '../patients/patients.php', 'icon' => 'bx-search', 'color' => 'info', 'title' => 'Search Patients', 'desc' => 'Find patient records'],
-                            ['href' => '../doctors/doctors.php', 'icon' => 'bx-group', 'color' => 'warning', 'title' => 'View Doctors', 'desc' => 'Manage doctors'],
-                            ['href' => '../patients/medical_records.php', 'icon' => 'bx-library', 'color' => 'secondary', 'title' => 'View Reports', 'desc' => 'Medical reports']
-                        ];
-                        foreach ($quick_actions as $action): ?>
-                        <a href="<?php echo $action['href']; ?>" class="quick-action-item">
-                            <div class="mb-3">
-                                <i class="bx <?php echo $action['icon']; ?> text-<?php echo $action['color']; ?>" style="font-size: 2.5rem;"></i>
-                            </div>
-                            <h6 class="mb-2"><?php echo $action['title']; ?></h6>
-                            <p class="text-muted mb-0"><?php echo $action['desc']; ?></p>
-                        </a>
-                        <?php endforeach; ?>
+                        <canvas id="monthlyPatientsChart" style="max-height: 350px;"></canvas>
                     </div>
                 </div>
             </div>
@@ -366,65 +296,136 @@ include '../includes/sidebar.php';
 <!-- Chart.js Scripts -->
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // BMI Chart
-    const bmiCtx = document.getElementById('bmiChart').getContext('2d');
-    new Chart(bmiCtx, {
-        type: 'doughnut',
+    // Daily Patients Chart
+    const dailyCtx = document.getElementById('dailyPatientsChart').getContext('2d');
+    
+    // Prepare daily data
+    const dailyData = [];
+    const dailyLabels = [];
+    
+    // Generate last 30 days
+    const today = new Date();
+    for (let i = 29; i >= 0; i--) {
+        const date = new Date(today);
+        date.setDate(date.getDate() - i);
+        const dateStr = date.toISOString().split('T')[0];
+        dailyLabels.push(date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
+        
+        // Find matching data
+        const found = <?php echo json_encode($daily_patients); ?>.find(item => item.date === dateStr);
+        dailyData.push(found ? parseInt(found.count) : 0);
+    }
+    
+    new Chart(dailyCtx, {
+        type: 'line',
         data: {
-            labels: ['Underweight', 'Normal', 'Overweight', 'Obese'],
+            labels: dailyLabels,
             datasets: [{
-                data: [<?php echo $bmi_stats['underweight']; ?>, <?php echo $bmi_stats['normal']; ?>, <?php echo $bmi_stats['overweight']; ?>, <?php echo $bmi_stats['obese']; ?>],
-                backgroundColor: ['#28a745', '#17a2b8', '#ffc107', '#dc3545'],
+                label: 'New Patients',
+                data: dailyData,
+                borderColor: '#007bff',
+                backgroundColor: 'rgba(0, 123, 255, 0.1)',
                 borderWidth: 3,
-                borderColor: '#fff'
+                fill: true,
+                tension: 0.4,
+                pointBackgroundColor: '#007bff',
+                pointBorderColor: '#fff',
+                pointBorderWidth: 2,
+                pointRadius: 4,
+                pointHoverRadius: 6
             }]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            plugins: {
-                legend: {
-                    position: 'bottom',
-                    labels: { padding: 20, usePointStyle: true, font: { size: 12, weight: 'bold' } }
+            plugins: { 
+                legend: { display: false },
+                tooltip: {
+                    backgroundColor: 'rgba(0,0,0,0.8)',
+                    titleColor: '#fff',
+                    bodyColor: '#fff',
+                    borderColor: '#007bff',
+                    borderWidth: 1
                 }
+            },
+            scales: {
+                y: { 
+                    beginAtZero: true, 
+                    grid: { color: 'rgba(0,0,0,0.1)' },
+                    ticks: { stepSize: 1 }
+                },
+                x: { 
+                    grid: { display: false },
+                    ticks: { maxTicksLimit: 10 }
+                }
+            },
+            interaction: {
+                intersect: false,
+                mode: 'index'
             }
         }
     });
 
-    // Monthly Chart
-    const monthlyCtx = document.getElementById('monthlyChart').getContext('2d');
-    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const monthlyData = new Array(12).fill(0);
-    <?php foreach ($monthly_stats as $stat): ?>
-    monthlyData[<?php echo $stat['month'] - 1; ?>] = <?php echo $stat['count']; ?>;
-    <?php endforeach; ?>
-
+    // Monthly Patients Chart
+    const monthlyCtx = document.getElementById('monthlyPatientsChart').getContext('2d');
+    
+    // Prepare monthly data
+    const monthlyData = [];
+    const monthlyLabels = [];
+    
+    // Generate last 12 months
+    for (let i = 11; i >= 0; i--) {
+        const date = new Date();
+        date.setMonth(date.getMonth() - i);
+        const year = date.getFullYear();
+        const month = date.getMonth() + 1;
+        
+        monthlyLabels.push(date.toLocaleDateString('en-US', { year: 'numeric', month: 'short' }));
+        
+        // Find matching data
+        const found = <?php echo json_encode($monthly_patients); ?>.find(item => 
+            parseInt(item.year) === year && parseInt(item.month) === month
+        );
+        monthlyData.push(found ? parseInt(found.count) : 0);
+    }
+    
     new Chart(monthlyCtx, {
-        type: 'line',
+        type: 'bar',
         data: {
-            labels: monthNames,
+            labels: monthlyLabels,
             datasets: [{
                 label: 'New Patients',
                 data: monthlyData,
+                backgroundColor: 'rgba(40, 167, 69, 0.8)',
                 borderColor: '#28a745',
-                backgroundColor: 'rgba(40, 167, 69, 0.1)',
-                borderWidth: 3,
-                fill: true,
-                tension: 0.4,
-                pointBackgroundColor: '#28a745',
-                pointBorderColor: '#fff',
-                pointBorderWidth: 2,
-                pointRadius: 6,
-                pointHoverRadius: 8
+                borderWidth: 2,
+                borderRadius: 8,
+                borderSkipped: false,
             }]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            plugins: { legend: { display: false } },
+            plugins: { 
+                legend: { display: false },
+                tooltip: {
+                    backgroundColor: 'rgba(0,0,0,0.8)',
+                    titleColor: '#fff',
+                    bodyColor: '#fff',
+                    borderColor: '#28a745',
+                    borderWidth: 1
+                }
+            },
             scales: {
-                y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.1)' } },
-                x: { grid: { display: false } }
+                y: { 
+                    beginAtZero: true, 
+                    grid: { color: 'rgba(0,0,0,0.1)' },
+                    ticks: { stepSize: 1 }
+                },
+                x: { 
+                    grid: { display: false },
+                    ticks: { maxTicksLimit: 8 }
+                }
             }
         }
     });
@@ -477,14 +478,21 @@ document.addEventListener('DOMContentLoaded', function() {
         statsObserver.observe(card);
     });
 
-    // Loading states for buttons
-    document.querySelectorAll('.quick-action-item').forEach(item => {
-        item.addEventListener('click', function() {
-            const icon = this.querySelector('i');
-            const originalClass = icon.className;
-            icon.className = 'bx bx-loader-alt bx-spin';
-            setTimeout(() => icon.className = originalClass, 1000);
+    // Chart animations
+    const chartObserver = new IntersectionObserver(function(entries) {
+        entries.forEach(entry => {
+            if (entry.isIntersecting) {
+                entry.target.style.opacity = '1';
+                entry.target.style.transform = 'translateY(0)';
+            }
         });
+    }, { threshold: 0.2 });
+
+    document.querySelectorAll('.chart-container').forEach(chart => {
+        chart.style.opacity = '0';
+        chart.style.transform = 'translateY(30px)';
+        chart.style.transition = 'all 0.8s ease';
+        chartObserver.observe(chart);
     });
 });
 </script>

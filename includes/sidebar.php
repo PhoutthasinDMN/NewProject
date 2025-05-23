@@ -2,6 +2,23 @@
 // includes/sidebar.php
 $current_page = basename($_SERVER['PHP_SELF'], '.php');
 $current_dir = basename(dirname($_SERVER['PHP_SELF']));
+
+// ตรวจสอบสิทธิ์ผู้ใช้
+$user_id = $_SESSION['user_id'] ?? 0;
+$isAdmin = false;
+
+if ($user_id > 0 && isset($conn)) {
+    $user_sql = "SELECT role FROM users WHERE id = ?";
+    $stmt = $conn->prepare($user_sql);
+    $stmt->bind_param("i", $user_id);
+    $stmt->execute();
+    $user_result = $stmt->get_result();
+    
+    if ($user_result->num_rows > 0) {
+        $user_data = $user_result->fetch_assoc();
+        $isAdmin = ($user_data['role'] == 'admin');
+    }
+}
 ?>
 <!-- Sidebar -->
 <aside id="layout-menu" class="layout-menu menu-vertical menu bg-menu-theme">
@@ -64,8 +81,9 @@ $current_dir = basename(dirname($_SERVER['PHP_SELF']));
             </ul>
         </li>
 
-        <!-- Patients -->
-        <li class="menu-item <?php echo ($current_dir == 'patients' || in_array($current_page, ['patients', 'patient_view', 'patients_action', 'medical_records', 'medical_records_action', 'medical_records_table'])) ? 'active open' : ''; ?>">
+        <?php if ($isAdmin): ?>
+        <!-- Patients (Admin Only) -->
+        <li class="menu-item <?php echo ($current_dir == 'patients' || in_array($current_page, ['patients', 'patient_view', 'patients_action'])) ? 'active open' : ''; ?>">
             <a href="javascript:void(0);" class="menu-link menu-toggle">
                 <i class="menu-icon tf-icons bx bx-group"></i>
                 <div>Patients</div>
@@ -90,20 +108,10 @@ $current_dir = basename(dirname($_SERVER['PHP_SELF']));
                         <div>Add Patient</div>
                     </a>
                 </li>
-                <li class="menu-item <?php echo (in_array($current_page, ['medical_records', 'medical_records_table'])) ? 'active' : ''; ?>">
-                    <a href="<?php echo isset($patients_url) ? $patients_url : '../patients/'; ?>medical_records.php" class="menu-link">
-                        <div>Medical Records</div>
-                    </a>
-                </li>
-                <li class="menu-item <?php echo ($current_page == 'medical_records_action' && (isset($_GET['action']) && $_GET['action'] == 'add')) ? 'active' : ''; ?>">
-                    <a href="<?php echo isset($patients_url) ? $patients_url : '../patients/'; ?>medical_records_action.php?action=add" class="menu-link">
-                        <div>New Record</div>
-                    </a>
-                </li>
             </ul>
         </li>
 
-        <!-- Doctors -->
+        <!-- Doctors (Admin Only) -->
         <li class="menu-item <?php echo ($current_dir == 'doctors' || in_array($current_page, ['doctors', 'doctor_view', 'doctors_action'])) ? 'active open' : ''; ?>">
             <a href="javascript:void(0);" class="menu-link menu-toggle">
                 <i class="menu-icon tf-icons bx bx-user-check"></i>
@@ -132,7 +140,7 @@ $current_dir = basename(dirname($_SERVER['PHP_SELF']));
             </ul>
         </li>
 
-        <!-- Nurses -->
+        <!-- Nurses (Admin Only) -->
         <li class="menu-item <?php echo ($current_dir == 'nurses' || in_array($current_page, ['nurses_action', 'nurse_view'])) ? 'active open' : ''; ?>">
             <a href="javascript:void(0);" class="menu-link menu-toggle">
                 <i class="menu-icon tf-icons bx bx-plus-medical"></i>
@@ -161,7 +169,54 @@ $current_dir = basename(dirname($_SERVER['PHP_SELF']));
             </ul>
         </li>
 
-        <!-- Appointments -->
+        <!-- Settings (Admin Only) -->
+        <li class="menu-item <?php echo ($current_page == 'settings' || $current_page == 'user-add' || $current_page == 'user-edit') ? 'active' : ''; ?>">
+            <a href="<?php echo isset($base_url) ? $base_url : '../dashboard/'; ?>settings.php" class="menu-link">
+                <i class="menu-icon tf-icons bx bx-cog"></i>
+                <div>Settings</div>
+                <?php
+                // Get user count for badge (optional)
+                if (isset($conn)) {
+                    $user_count = $conn->query("SELECT COUNT(*) as count FROM users")->fetch_assoc()['count'] ?? 0;
+                    if ($user_count > 1) { // More than 1 user (current admin)
+                        echo '<div class="badge badge-center rounded-pill bg-secondary ms-auto">' . $user_count . '</div>';
+                    }
+                }
+                ?>
+            </a>
+        </li>
+        <?php endif; ?>
+
+        <!-- Medical Records (Available for all users) -->
+        <li class="menu-item <?php echo ($current_dir == 'medical_records' || in_array($current_page, ['medical_records', 'medical_records_action', 'medical_record_view'])) ? 'active open' : ''; ?>">
+            <a href="javascript:void(0);" class="menu-link menu-toggle">
+                <i class="menu-icon tf-icons bx bx-file-blank"></i>
+                <div>Medical Records</div>
+                <?php
+                // Get medical records count for badge
+                if (isset($conn)) {
+                    $records_count = $conn->query("SELECT COUNT(*) as count FROM medical_records")->fetch_assoc()['count'] ?? 0;
+                    if ($records_count > 0) {
+                        echo '<div class="badge badge-center rounded-pill bg-info ms-auto">' . $records_count . '</div>';
+                    }
+                }
+                ?>
+            </a>
+            <ul class="menu-sub">
+                <li class="menu-item <?php echo (in_array($current_page, ['medical_records_action', 'medical_record_view']) && (!isset($_GET['action']) || $_GET['action'] == 'list' || $_GET['action'] == 'view')) ? 'active' : ''; ?>">
+                    <a href="<?php echo isset($medical_records_url) ? $medical_records_url : '../medical_records/'; ?>medical_records_action.php" class="menu-link">
+                        <div>All Records</div>
+                    </a>
+                </li>
+                <li class="menu-item <?php echo ($current_page == 'medical_records_action' && (isset($_GET['action']) && $_GET['action'] == 'add')) ? 'active' : ''; ?>">
+                    <a href="<?php echo isset($medical_records_url) ? $medical_records_url : '../medical_records/'; ?>medical_records_action.php?action=add" class="menu-link">
+                        <div>New Record</div>
+                    </a>
+                </li>
+            </ul>
+        </li>
+
+        <!-- Appointments (Available for all users) -->
         <li class="menu-item <?php echo ($current_dir == 'appointments' || in_array($current_page, ['appointments', 'appointment_view', 'appointments_action'])) ? 'active open' : ''; ?>">
             <a href="javascript:void(0);" class="menu-link menu-toggle">
                 <i class="menu-icon tf-icons bx bx-calendar"></i>
@@ -195,13 +250,14 @@ $current_dir = basename(dirname($_SERVER['PHP_SELF']));
             </ul>
         </li>
 
-        <!-- Reports -->
+        <!-- Reports (Available for all users) -->
         <li class="menu-item <?php echo ($current_dir == 'reports' || in_array($current_page, ['reports', 'analytics', 'export'])) ? 'active open' : ''; ?>">
             <a href="javascript:void(0);" class="menu-link menu-toggle">
                 <i class="menu-icon tf-icons bx bx-bar-chart-alt-2"></i>
                 <div>Reports</div>
             </a>
             <ul class="menu-sub">
+                <?php if ($isAdmin): ?>
                 <li class="menu-item <?php echo ($current_page == 'patients' && $current_dir == 'reports') ? 'active' : ''; ?>">
                     <a href="<?php echo isset($reports_url) ? $reports_url : '../reports/'; ?>patients.php" class="menu-link">
                         <div>Patient Reports</div>
@@ -212,6 +268,7 @@ $current_dir = basename(dirname($_SERVER['PHP_SELF']));
                         <div>Medical Reports</div>
                     </a>
                 </li>
+                <?php endif; ?>
                 <li class="menu-item <?php echo ($current_page == 'analytics') ? 'active' : ''; ?>">
                     <a href="<?php echo isset($reports_url) ? $reports_url : '../reports/'; ?>analytics.php" class="menu-link">
                         <div>Analytics</div>
@@ -225,7 +282,7 @@ $current_dir = basename(dirname($_SERVER['PHP_SELF']));
             </ul>
         </li>
 
-        <!-- Inventory (Optional) -->
+        <!-- Inventory (Available for all users) -->
         <li class="menu-item <?php echo ($current_dir == 'inventory' || in_array($current_page, ['inventory', 'medicines', 'equipment'])) ? 'active open' : ''; ?>">
             <a href="javascript:void(0);" class="menu-link menu-toggle">
                 <i class="menu-icon tf-icons bx bx-package"></i>
@@ -242,11 +299,13 @@ $current_dir = basename(dirname($_SERVER['PHP_SELF']));
                         <div>Equipment</div>
                     </a>
                 </li>
+                <?php if ($isAdmin): ?>
                 <li class="menu-item <?php echo ($current_page == 'stock') ? 'active' : ''; ?>">
                     <a href="<?php echo isset($inventory_url) ? $inventory_url : '../inventory/'; ?>stock.php" class="menu-link">
                         <div>Stock Management</div>
                     </a>
                 </li>
+                <?php endif; ?>
             </ul>
         </li>
 
@@ -255,7 +314,8 @@ $current_dir = basename(dirname($_SERVER['PHP_SELF']));
             <span class="menu-header-text">Quick Actions</span>
         </li>
 
-        <!-- Quick Add Patient -->
+        <?php if ($isAdmin): ?>
+        <!-- Quick Add Patient (Admin Only) -->
         <li class="menu-item">
             <a href="<?php echo isset($patients_url) ? $patients_url : '../patients/'; ?>patients_action.php?action=add" class="menu-link">
                 <i class="menu-icon tf-icons bx bx-plus-circle text-success"></i>
@@ -263,12 +323,47 @@ $current_dir = basename(dirname($_SERVER['PHP_SELF']));
             </a>
         </li>
 
-        <!-- Quick Add Doctor -->
+        <!-- Quick Add Doctor (Admin Only) -->
         <li class="menu-item">
             <a href="<?php echo isset($doctors_url) ? $doctors_url : '../doctors/'; ?>doctors_action.php?action=add" class="menu-link">
                 <i class="menu-icon tf-icons bx bx-user-plus text-warning"></i>
                 <div>Add Doctor</div>
             </a>
+        </li>
+        <?php endif; ?>
+
+        <!-- Quick Add Medical Record (Available for all users) -->
+        <li class="menu-item">
+            <a href="<?php echo isset($medical_records_url) ? $medical_records_url : '../medical_records/'; ?>medical_records_action.php?action=add" class="menu-link">
+                <i class="menu-icon tf-icons bx bx-file-plus text-info"></i>
+                <div>New Record</div>
+            </a>
+        </li>
+
+        <!-- Quick Schedule Appointment (Available for all users) -->
+        <li class="menu-item">
+            <a href="<?php echo isset($appointments_url) ? $appointments_url : '../appointments/'; ?>appointments_action.php?action=add" class="menu-link">
+                <i class="menu-icon tf-icons bx bx-calendar-plus text-primary"></i>
+                <div>Schedule Appointment</div>
+            </a>
+        </li>
+
+        <!-- User Information Section -->
+        <li class="menu-header small text-uppercase">
+            <span class="menu-header-text">Account</span>
+        </li>
+
+        <!-- Role Badge -->
+        <li class="menu-item">
+            <div class="menu-link disabled">
+                <i class="menu-icon tf-icons bx bx-shield"></i>
+                <div class="d-flex justify-content-between align-items-center w-100">
+                    <span>Role</span>
+                    <span class="badge bg-<?php echo $isAdmin ? 'danger' : 'primary'; ?> rounded-pill">
+                        <?php echo $isAdmin ? 'Admin' : 'User'; ?>
+                    </span>
+                </div>
+            </div>
         </li>
 
         <!-- Logout -->
@@ -282,8 +377,8 @@ $current_dir = basename(dirname($_SERVER['PHP_SELF']));
 </aside>
 
 <!-- Additional CSS for enhanced sidebar -->
- <style>
-   /* Sidebar menu styles */
+<style>
+/* Sidebar menu styles */
 .menu-item .badge {
     font-size: 0.65rem;
     min-width: 1.25rem;
@@ -309,6 +404,26 @@ $current_dir = basename(dirname($_SERVER['PHP_SELF']));
 
 .menu-item .text-danger {
     color: #dc3545 !important;
+}
+
+.menu-item .text-info {
+    color: #17a2b8 !important;
+}
+
+/* Disabled menu item */
+.menu-link.disabled {
+    pointer-events: none;
+    opacity: 0.8;
+    cursor: default;
+}
+
+/* Role badge specific styling */
+.menu-item .badge.bg-danger {
+    background-color: #dc3545 !important;
+}
+
+.menu-item .badge.bg-primary {
+    background-color: #696cff !important;
 }
 
 /* Hover effects */
@@ -370,44 +485,87 @@ $current_dir = basename(dirname($_SERVER['PHP_SELF']));
         transform: scale(1);
     }
 }
+
+/* Admin only items highlight */
+.menu-item[data-admin-only="true"] {
+    position: relative;
+}
+
+.menu-item[data-admin-only="true"]::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background: linear-gradient(45deg, #dc3545, #ff6b6b);
+    opacity: 0.6;
+}
 </style>
     
 <!-- JavaScript for enhanced functionality -->
 <script>
-    document.addEventListener('DOMContentLoaded', function() {
-        // Auto-expand current menu
-        const activeMenuItem = document.querySelector('.menu-item.active.open');
-        if (activeMenuItem) {
-            const submenu = activeMenuItem.querySelector('.menu-sub');
-            if (submenu) {
-                submenu.style.display = 'block';
-            }
+document.addEventListener('DOMContentLoaded', function() {
+    // Auto-expand current menu
+    const activeMenuItem = document.querySelector('.menu-item.active.open');
+    if (activeMenuItem) {
+        const submenu = activeMenuItem.querySelector('.menu-sub');
+        if (submenu) {
+            submenu.style.display = 'block';
         }
+    }
 
-        // Add click tracking for analytics (optional)
-        const menuLinks = document.querySelectorAll('.menu-link');
-        menuLinks.forEach(link => {
-            link.addEventListener('click', function(e) {
-                const menuText = this.querySelector('div')?.textContent;
-                if (menuText && typeof gtag !== 'undefined') {
-                    gtag('event', 'menu_click', {
-                        'event_category': 'Navigation',
-                        'event_label': menuText
-                    });
-                }
-            });
-        });
-
-        // Badge animation on hover
-        const badges = document.querySelectorAll('.badge');
-        badges.forEach(badge => {
-            badge.addEventListener('mouseenter', function() {
-                this.style.animationDuration = '0.5s';
-            });
-
-            badge.addEventListener('mouseleave', function() {
-                this.style.animationDuration = '2s';
-            });
+    // Add click tracking for analytics (optional)
+    const menuLinks = document.querySelectorAll('.menu-link');
+    menuLinks.forEach(link => {
+        link.addEventListener('click', function(e) {
+            const menuText = this.querySelector('div')?.textContent;
+            if (menuText && typeof gtag !== 'undefined') {
+                gtag('event', 'menu_click', {
+                    'event_category': 'Navigation',
+                    'event_label': menuText
+                });
+            }
         });
     });
+
+    // Badge animation on hover
+    const badges = document.querySelectorAll('.badge');
+    badges.forEach(badge => {
+        badge.addEventListener('mouseenter', function() {
+            this.style.animationDuration = '0.5s';
+        });
+
+        badge.addEventListener('mouseleave', function() {
+            this.style.animationDuration = '2s';
+        });
+    });
+
+    // Role-based UI adjustments
+    const isAdmin = <?php echo $isAdmin ? 'true' : 'false'; ?>;
+    
+    if (!isAdmin) {
+        // Add visual indicators for user role
+        document.body.classList.add('user-role');
+        
+        // Optional: Add tooltip for restricted features
+        const restrictedLinks = document.querySelectorAll('[data-admin-only]');
+        restrictedLinks.forEach(link => {
+            link.setAttribute('title', 'Admin access required');
+        });
+    } else {
+        document.body.classList.add('admin-role');
+    }
+
+    // Welcome message based on role
+    const welcomeMessage = isAdmin ? 
+        'Welcome Admin! You have full system access.' : 
+        'Welcome User! Limited access granted.';
+    
+    // Store role info for other scripts
+    window.userRole = {
+        isAdmin: isAdmin,
+        welcomeMessage: welcomeMessage
+    };
+});
 </script>

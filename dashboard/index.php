@@ -3,395 +3,488 @@ require_once '../includes/config.php';
 require_once '../includes/db.php';
 require_once '../includes/functions.php';
 
-// บังคับให้ล็อกอินก่อนเข้าใช้งาน
 requireLogin();
+
+// ตั้งค่าสำหรับ includes
+$assets_path = '../assets/';
+$page_title = 'Medical Dashboard';
+$extra_scripts_head = ['https://cdn.jsdelivr.net/npm/chart.js'];
+$extra_css = ['../assets/css/dashboard.css'];
 
 // ดึงข้อมูลผู้ใช้
 $user_id = $_SESSION['user_id'];
-$sql = "SELECT username, email, role, created_at FROM users WHERE id = ?";
-$stmt = $conn->prepare($sql);
+$user_sql = "SELECT username, email, role, created_at FROM users WHERE id = ?";
+$stmt = $conn->prepare($user_sql);
 $stmt->bind_param("i", $user_id);
 $stmt->execute();
-$result = $stmt->get_result();
-$user = $result->fetch_assoc();
-
-// ตรวจสอบว่าผู้ใช้เป็น admin หรือไม่
+$user = $stmt->get_result()->fetch_assoc();
 $isAdmin = ($user['role'] == 'admin');
+
+// ดึงสถิติต่างๆ
+$stats = [
+    'patients' => $conn->query("SELECT COUNT(*) as count FROM patients")->fetch_assoc()['count'],
+    'records' => $conn->query("SELECT COUNT(*) as count FROM medical_records")->fetch_assoc()['count'],
+    'doctors' => $conn->query("SELECT COUNT(*) as count FROM doctors")->fetch_assoc()['count'],
+    'appointments' => $conn->query("SELECT COUNT(*) as count FROM medical_records WHERE next_appointment > NOW()")->fetch_assoc()['count']
+];
+
+// ดึงข้อมูลล่าสุด
+$recent_patients = $conn->query("SELECT id, first_name, last_name, age, phone, created_at FROM patients ORDER BY created_at DESC LIMIT 5")->fetch_all(MYSQLI_ASSOC);
+$recent_records = $conn->query("SELECT mr.id, mr.diagnosis, mr.visit_date, p.first_name, p.last_name FROM medical_records mr JOIN patients p ON mr.patient_id = p.id ORDER BY mr.visit_date DESC LIMIT 5")->fetch_all(MYSQLI_ASSOC);
+$recent_doctors = $conn->query("SELECT id, first_name, last_name, specialization, phone, created_at FROM doctors ORDER BY created_at DESC LIMIT 5")->fetch_all(MYSQLI_ASSOC);
+$upcoming_appointments = $conn->query("SELECT mr.next_appointment, mr.diagnosis, p.first_name, p.last_name FROM medical_records mr JOIN patients p ON mr.patient_id = p.id WHERE mr.next_appointment > NOW() ORDER BY mr.next_appointment LIMIT 5")->fetch_all(MYSQLI_ASSOC);
+
+// สถิติ BMI
+$bmi_stats = $conn->query("SELECT 
+    COUNT(CASE WHEN bmi < 18.5 THEN 1 END) as underweight,
+    COUNT(CASE WHEN bmi >= 18.5 AND bmi < 25 THEN 1 END) as normal,
+    COUNT(CASE WHEN bmi >= 25 AND bmi < 30 THEN 1 END) as overweight,
+    COUNT(CASE WHEN bmi >= 30 THEN 1 END) as obese
+    FROM medical_records WHERE bmi IS NOT NULL")->fetch_assoc();
+
+// สถิติรายเดือน
+$monthly_stats = $conn->query("SELECT 
+    MONTH(created_at) as month,
+    COUNT(*) as count
+    FROM patients 
+    WHERE YEAR(created_at) = YEAR(NOW())
+    GROUP BY MONTH(created_at)
+    ORDER BY month")->fetch_all(MYSQLI_ASSOC);
+
+// Include Header และ Sidebar
+include '../includes/header.php';
+include '../includes/sidebar.php';
 ?>
-<!DOCTYPE html>
-<html
-  lang="en"
-  class="light-style layout-menu-fixed"
-  dir="ltr"
-  data-theme="theme-default"
-  data-assets-path="../assets/"
-  data-template="vertical-menu-template-free"
->
-  <head>
-    <meta charset="utf-8" />
-    <meta
-      name="viewport"
-      content="width=device-width, initial-scale=1.0, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0"
-    />
 
-    <title>Dashboard | Sneat - Bootstrap 5 HTML Admin Template</title>
+<!-- Layout Page -->
+<div class="layout-page">
+    <?php include '../includes/navbar.php'; ?>
 
-    <meta name="description" content="" />
-
-    <!-- Favicon -->
-    <link rel="icon" type="image/x-icon" href="../assets/img/favicon/favicon.ico" />
-
-    <!-- Fonts -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Public+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400;1,500;1,600;1,700&display=swap"
-      rel="stylesheet"
-    />
-
-    <!-- Icons. Uncomment required icon fonts -->
-    <link rel="stylesheet" href="../assets/vendor/fonts/boxicons.css" />
-
-    <!-- Core CSS -->
-    <link rel="stylesheet" href="../assets/vendor/css/core.css" class="template-customizer-core-css" />
-    <link rel="stylesheet" href="../assets/vendor/css/theme-default.css" class="template-customizer-theme-css" />
-    <link rel="stylesheet" href="../assets/css/demo.css" />
-
-    <!-- Vendors CSS -->
-    <link rel="stylesheet" href="../assets/vendor/libs/perfect-scrollbar/perfect-scrollbar.css" />
-
-    <!-- Page CSS -->
-
-    <!-- Helpers -->
-    <script src="../assets/vendor/js/helpers.js"></script>
-
-    <!--! Template customizer & Theme config files MUST be included after core stylesheets and helpers.js in the <head> section -->
-    <!--? Config:  Mandatory theme config file contain global vars & default theme options, Set your preferred theme option in this file.  -->
-    <script src="../assets/js/config.js"></script>
-  </head>
-
-  <body>
-    <!-- Layout wrapper -->
-    <div class="layout-wrapper layout-content-navbar">
-      <div class="layout-container">
-        <!-- Menu -->
-        <aside id="layout-menu" class="layout-menu menu-vertical menu bg-menu-theme">
-          <div class="app-brand demo">
-            <a href="index.php" class="app-brand-link">
-              <span class="app-brand-logo demo">
-                <svg
-                  width="25"
-                  viewBox="0 0 25 42"
-                  version="1.1"
-                  xmlns="http://www.w3.org/2000/svg"
-                  xmlns:xlink="http://www.w3.org/1999/xlink"
-                >
-                  <defs>
-                    <path
-                      d="M13.7918663,0.358365126 L3.39788168,7.44174259 C0.566865006,9.69408886 -0.379795268,12.4788597 0.557900856,15.7960551 C0.68998853,16.2305145 1.09562888,17.7872135 3.12357076,19.2293357 C3.8146334,19.7207684 5.32369333,20.3834223 7.65075054,21.2172976 L7.59773219,21.2525164 L2.63468769,24.5493413 C0.445452254,26.3002124 0.0884951797,28.5083815 1.56381646,31.1738486 C2.83770406,32.8170431 5.20850219,33.2640127 7.09180128,32.5391577 C8.347334,32.0559211 11.4559176,30.0011079 16.4175519,26.3747182 C18.0338572,24.4997857 18.6973423,22.4544883 18.4080071,20.2388261 C17.963753,17.5346866 16.1776345,15.5799961 13.0496516,14.3747546 L10.9194936,13.4715819 L18.6192054,7.984237 L13.7918663,0.358365126 Z"
-                      id="path-1"
-                    ></path>
-                    <path
-                      d="M5.47320593,6.00457225 C4.05321814,8.216144 4.36334763,10.0722806 6.40359441,11.5729822 C8.61520715,12.571656 10.0999176,13.2171421 10.8577257,13.5094407 L15.5088241,14.433041 L18.6192054,7.984237 C15.5364148,3.11535317 13.9273018,0.573395879 13.7918663,0.358365126 C13.5790555,0.511491653 10.8061687,2.3935607 5.47320593,6.00457225 Z"
-                      id="path-3"
-                    ></path>
-                    <path
-                      d="M7.50063644,21.2294429 L12.3234468,23.3159332 C14.1688022,24.7579751 14.397098,26.4880487 13.008334,28.506154 C11.6195701,30.5242593 10.3099883,31.790241 9.07958868,32.3040991 C5.78142938,33.4346997 4.13234973,34 4.13234973,34 C4.13234973,34 2.75489982,33.0538207 2.37032616e-14,31.1614621 C-0.55822714,27.8186216 -0.55822714,26.0572515 -4.05231404e-15,25.8773518 C0.83734071,25.6075023 2.77988457,22.8248993 3.3049379,22.52991 C3.65497346,22.3332504 5.05353963,21.8997614 7.50063644,21.2294429 Z"
-                      id="path-4"
-                    ></path>
-                    <path
-                      d="M20.6,7.13333333 L25.6,13.8 C26.2627417,14.6836556 26.0836556,15.9372583 25.2,16.6 C24.8538077,16.8596443 24.4327404,17 24,17 L14,17 C12.8954305,17 12,16.1045695 12,15 C12,14.5672596 12.1403557,14.1461923 12.4,13.8 L17.4,7.13333333 C18.0627417,6.24967773 19.3163444,6.07059163 20.2,6.73333333 C20.3516113,6.84704183 20.4862915,6.981722 20.6,7.13333333 Z"
-                      id="path-5"
-                    ></path>
-                  </defs>
-                  <g id="g-app-brand" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
-                    <g id="Brand-Logo" transform="translate(-27.000000, -15.000000)">
-                      <g id="Icon" transform="translate(27.000000, 15.000000)">
-                        <g id="Mask" transform="translate(0.000000, 8.000000)">
-                          <mask id="mask-2" fill="white">
-                            <use xlink:href="#path-1"></use>
-                          </mask>
-                          <use fill="#696cff" xlink:href="#path-1"></use>
-                          <g id="Path-3" mask="url(#mask-2)">
-                            <use fill="#696cff" xlink:href="#path-3"></use>
-                            <use fill-opacity="0.2" fill="#FFFFFF" xlink:href="#path-3"></use>
-                          </g>
-                          <g id="Path-4" mask="url(#mask-2)">
-                            <use fill="#696cff" xlink:href="#path-4"></use>
-                            <use fill-opacity="0.2" fill="#FFFFFF" xlink:href="#path-4"></use>
-                          </g>
-                        </g>
-                        <g
-                          id="Triangle"
-                          transform="translate(19.000000, 11.000000) rotate(-300.000000) translate(-19.000000, -11.000000) "
-                        >
-                          <use fill="#696cff" xlink:href="#path-5"></use>
-                          <use fill-opacity="0.2" fill="#FFFFFF" xlink:href="#path-5"></use>
-                        </g>
-                      </g>
-                    </g>
-                  </g>
-                </svg>
-              </span>
-              <span class="app-brand-text demo menu-text fw-bolder ms-2">Sneat</span>
-            </a>
-
-            <a href="javascript:void(0);" class="layout-menu-toggle menu-link text-large ms-auto d-block d-xl-none">
-              <i class="bx bx-chevron-left bx-sm align-middle"></i>
-            </a>
-          </div>
-
-          <div class="menu-inner-shadow"></div>
-
-          <ul class="menu-inner py-1">
-            <!-- Dashboard -->
-            <li class="menu-item active">
-              <a href="index.php" class="menu-link">
-                <i class="menu-icon tf-icons bx bx-home-circle"></i>
-                <div data-i18n="Analytics">Dashboard</div>
-              </a>
-            </li>
-
-            <!-- Profile -->
-            <li class="menu-item">
-              <a href="javascript:void(0);" class="menu-link menu-toggle">
-                <i class="menu-icon tf-icons bx bx-user"></i>
-                <div data-i18n="Profile">Profile</div>
-              </a>
-              <ul class="menu-sub">
-                <li class="menu-item">
-                  <a href="profile.php" class="menu-link">
-                    <div data-i18n="View Profile">View Profile</div>
-                  </a>
-                </li>
-                <li class="menu-item">
-                  <a href="profile-edit.php" class="menu-link">
-                    <div data-i18n="Edit Profile">Edit Profile</div>
-                  </a>
-                </li>
-              </ul>
-            </li>
-
-            <!-- Settings (Admin Only) -->
-            <?php if ($isAdmin): ?>
-            <li class="menu-item">
-              <a href="settings.php" class="menu-link">
-                <i class="menu-icon tf-icons bx bx-cog"></i>
-                <div data-i18n="Settings">Settings</div>
-              </a>
-            </li>
-            <?php endif; ?>
-
-            <!-- Logout -->
-            <li class="menu-item">
-              <a href="../auth/logout.php" class="menu-link">
-                <i class="menu-icon tf-icons bx bx-log-out"></i>
-                <div data-i18n="Logout">Logout</div>
-              </a>
-            </li>
-          </ul>
-        </aside>
-        <!-- / Menu -->
-
-        <!-- Layout container -->
-        <div class="layout-page">
-          <!-- Navbar -->
-          <nav
-            class="layout-navbar container-xxl navbar navbar-expand-xl navbar-detached align-items-center bg-navbar-theme"
-            id="layout-navbar"
-          >
-            <div class="layout-menu-toggle navbar-nav align-items-xl-center me-3 me-xl-0 d-xl-none">
-              <a class="nav-item nav-link px-0 me-xl-4" href="javascript:void(0)">
-                <i class="bx bx-menu bx-sm"></i>
-              </a>
+    <!-- Content wrapper -->
+    <div class="content-wrapper">
+        <div class="container-xxl flex-grow-1 container-p-y">
+            
+            <!-- Welcome Banner -->
+            <div class="welcome-banner">
+                <div class="row align-items-center">
+                    <div class="col-md-8">
+                        <h2 class="mb-3">Welcome back, <?php echo htmlspecialchars($user['username']); ?>! 🎉</h2>
+                        <p class="mb-4 fs-5">Medical Dashboard - Comprehensive patient management system</p>
+                        <div class="d-flex gap-3 flex-wrap">
+                            <a href="../patients/patients_action.php?action=add" class="btn btn-light btn-lg">
+                                <i class="bx bx-plus me-2"></i>Add New Patient
+                            </a>
+                            <a href="../patients/medical_records_action.php?action=add" class="btn btn-outline-light btn-lg">
+                                <i class="bx bx-file-plus me-2"></i>New Medical Record
+                            </a>
+                        </div>
+                    </div>
+                    <div class="col-md-4 text-center">
+                        <i class="bx bx-health display-1 text-white-50"></i>
+                    </div>
+                </div>
             </div>
 
-            <div class="navbar-nav-right d-flex align-items-center" id="navbar-collapse">
-              <!-- Search -->
-              <div class="navbar-nav align-items-center">
-                <div class="nav-item d-flex align-items-center">
-                  <i class="bx bx-search fs-4 lh-0"></i>
-                  <input
-                    type="text"
-                    class="form-control border-0 shadow-none"
-                    placeholder="Search..."
-                    aria-label="Search..."
-                  />
-                </div>
-              </div>
-              <!-- /Search -->
-
-              <ul class="navbar-nav flex-row align-items-center ms-auto">
-                <!-- User -->
-                <li class="nav-item navbar-dropdown dropdown-user dropdown">
-                  <a class="nav-link dropdown-toggle hide-arrow" href="javascript:void(0);" data-bs-toggle="dropdown">
-                    <div class="avatar avatar-online">
-                      <img src="../assets/img/avatars/1.png" alt class="w-px-40 h-auto rounded-circle" />
-                    </div>
-                  </a>
-                  <ul class="dropdown-menu dropdown-menu-end">
-                    <li>
-                      <a class="dropdown-item" href="#">
-                        <div class="d-flex">
-                          <div class="flex-shrink-0 me-3">
-                            <div class="avatar avatar-online">
-                              <img src="../assets/img/avatars/1.png" alt class="w-px-40 h-auto rounded-circle" />
+            <!-- Statistics Cards -->
+            <div class="row mb-5">
+                <?php 
+                $stat_items = [
+                    ['title' => 'Total Patients', 'value' => $stats['patients'], 'icon' => 'bx-group', 'color' => 'linear-gradient(135deg, #28a745, #20c997)', 'desc' => 'Registered patients'],
+                    ['title' => 'Medical Records', 'value' => $stats['records'], 'icon' => 'bx-file-blank', 'color' => 'linear-gradient(135deg, #007bff, #0056b3)', 'desc' => 'Total records'],
+                    ['title' => 'Total Doctors', 'value' => $stats['doctors'], 'icon' => 'bx-user-check', 'color' => 'linear-gradient(135deg, #ffc107, #e0a800)', 'desc' => 'Registered doctors'],
+                    ['title' => 'Upcoming Visits', 'value' => $stats['appointments'], 'icon' => 'bx-calendar-check', 'color' => 'linear-gradient(135deg, #17a2b8, #138496)', 'desc' => 'Scheduled appointments']
+                ];
+                foreach ($stat_items as $item): ?>
+                <div class="col-lg-3 col-md-6 mb-4">
+                    <div class="dashboard-stats-card">
+                        <div class="card-body text-center py-4">
+                            <div class="stats-icon-large mb-3" style="background: <?php echo $item['color']; ?>">
+                                <i class="bx <?php echo $item['icon']; ?>"></i>
                             </div>
-                          </div>
-                          <div class="flex-grow-1">
-                            <span class="fw-semibold d-block"><?php echo htmlspecialchars($user['username']); ?></span>
-                            <small class="text-muted"><?php echo htmlspecialchars($user['email']); ?></small>
-                          </div>
+                            <div class="stats-number-large"><?php echo number_format($item['value']); ?></div>
+                            <h5 class="card-title mb-1"><?php echo $item['title']; ?></h5>
+                            <p class="text-muted small mb-0"><?php echo $item['desc']; ?></p>
                         </div>
-                      </a>
-                    </li>
-                    <li>
-                      <div class="dropdown-divider"></div>
-                    </li>
-                    <li>
-                      <a class="dropdown-item" href="profile.php">
-                        <i class="bx bx-user me-2"></i>
-                        <span class="align-middle">My Profile</span>
-                      </a>
-                    </li>
-                    <?php if ($isAdmin): ?>
-                    <li>
-                      <a class="dropdown-item" href="settings.php">
-                        <i class="bx bx-cog me-2"></i>
-                        <span class="align-middle">Settings</span>
-                      </a>
-                    </li>
-                    <?php endif; ?>
-                    <li>
-                      <div class="dropdown-divider"></div>
-                    </li>
-                    <li>
-                      <a class="dropdown-item" href="../auth/logout.php">
-                        <i class="bx bx-power-off me-2"></i>
-                        <span class="align-middle">Log Out</span>
-                      </a>
-                    </li>
-                  </ul>
-                </li>
-                <!--/ User -->
-              </ul>
+                    </div>
+                </div>
+                <?php endforeach; ?>
             </div>
-          </nav>
-          <!-- / Navbar -->
 
-          <!-- Content wrapper -->
-          <div class="content-wrapper">
-            <!-- Content -->
-            <div class="container-xxl flex-grow-1 container-p-y">
-              <div class="row">
-                <div class="col-lg-12 mb-4 order-0">
-                  <div class="card">
-                    <div class="d-flex align-items-end row">
-                      <div class="col-sm-7">
-                        <div class="card-body">
-                          <h5 class="card-title text-primary">Welcome <?php echo htmlspecialchars($user['username']); ?>! 🎉</h5>
-                          <p class="mb-4">
-                            You have successfully logged in to the Sneat admin dashboard.
-                            <?php if ($isAdmin): ?>
-                            <span class="fw-bold">You are an administrator.</span>
+            <!-- Activity Section -->
+            <div class="row mb-5">
+                <!-- Recent Patients -->
+                <div class="col-lg-3 mb-4">
+                    <div class="activity-card">
+                        <div class="activity-header">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <h6 class="mb-0"><i class="bx bx-user-plus me-2 text-primary"></i>Recent Patients</h6>
+                                <a href="../patients/patients.php" class="btn btn-sm btn-primary">View All</a>
+                            </div>
+                        </div>
+                        <div class="activity-body">
+                            <?php if (empty($recent_patients)): ?>
+                                <div class="text-center py-4">
+                                    <i class="bx bx-user-plus display-2 text-muted"></i>
+                                    <p class="mt-2 text-muted small">No patients yet</p>
+                                </div>
+                            <?php else: ?>
+                                <?php foreach ($recent_patients as $patient): ?>
+                                <div class="activity-item-enhanced">
+                                    <div class="d-flex align-items-center">
+                                        <div class="patient-avatar-large">
+                                            <?php echo strtoupper(substr($patient['first_name'], 0, 1) . substr($patient['last_name'], 0, 1)); ?>
+                                        </div>
+                                        <div class="flex-grow-1">
+                                            <a href="../patients/patient_view.php?id=<?php echo $patient['id']; ?>" class="text-decoration-none">
+                                                <h6 class="mb-1 fw-bold"><?php echo htmlspecialchars($patient['first_name'] . ' ' . $patient['last_name']); ?></h6>
+                                            </a>
+                                            <div class="d-flex justify-content-between align-items-center">
+                                                <small class="text-muted">
+                                                    <i class="bx bx-calendar me-1"></i>Age: <?php echo $patient['age']; ?>
+                                                </small>
+                                                <span class="badge bg-light text-dark"><?php echo date('M j', strtotime($patient['created_at'])); ?></span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <?php endforeach; ?>
                             <?php endif; ?>
-                          </p>
+                        </div>
+                    </div>
+                </div>
 
-                          <a href="profile.php" class="btn btn-sm btn-outline-primary">View Profile</a>
+                <!-- Recent Doctors -->
+                <div class="col-lg-3 mb-4">
+                    <div class="activity-card">
+                        <div class="activity-header">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <h6 class="mb-0"><i class="bx bx-user-check me-2 text-warning"></i>Recent Doctors</h6>
+                                <a href="../doctors/doctors.php" class="btn btn-sm btn-warning">View All</a>
+                            </div>
                         </div>
-                      </div>
-                      <div class="col-sm-5 text-center text-sm-left">
-                        <div class="card-body pb-0 px-0 px-md-4">
-                          <img
-                            src="../assets/img/illustrations/man-with-laptop-light.png"
-                            height="140"
-                            alt="View Badge User"
-                            data-app-dark-img="illustrations/man-with-laptop-dark.png"
-                            data-app-light-img="illustrations/man-with-laptop-light.png"
-                          />
+                        <div class="activity-body">
+                            <?php if (empty($recent_doctors)): ?>
+                                <div class="text-center py-4">
+                                    <i class="bx bx-user-check display-2 text-muted"></i>
+                                    <p class="mt-2 text-muted small">No doctors yet</p>
+                                </div>
+                            <?php else: ?>
+                                <?php foreach ($recent_doctors as $doctor): ?>
+                                <div class="activity-item-enhanced">
+                                    <div class="d-flex align-items-center">
+                                        <div class="patient-avatar-large" style="background: linear-gradient(135deg, #ffc107, #e0a800);">
+                                            <?php echo strtoupper(substr($doctor['first_name'], 0, 1) . substr($doctor['last_name'], 0, 1)); ?>
+                                        </div>
+                                        <div class="flex-grow-1">
+                                            <a href="../doctors/doctor_view.php?id=<?php echo $doctor['id']; ?>" class="text-decoration-none">
+                                                <h6 class="mb-1 fw-bold">Dr. <?php echo htmlspecialchars($doctor['first_name'] . ' ' . $doctor['last_name']); ?></h6>
+                                            </a>
+                                            <div class="d-flex justify-content-between align-items-center">
+                                                <small class="text-muted">
+                                                    <i class="bx bx-briefcase me-1"></i><?php echo htmlspecialchars($doctor['specialization']); ?>
+                                                </small>
+                                                <span class="badge bg-light text-dark"><?php echo date('M j', strtotime($doctor['created_at'])); ?></span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <?php endforeach; ?>
+                            <?php endif; ?>
                         </div>
-                      </div>
                     </div>
-                  </div>
                 </div>
-              </div>
-              
-              <div class="row">
-                <div class="col-lg-12 mb-4 order-0">
-                  <div class="card">
-                    <div class="card-body">
-                      <h5 class="card-title">Account Information</h5>
-                      <div class="table-responsive">
-                        <table class="table table-borderless">
-                          <tbody>
-                            <tr>
-                              <td>Username:</td>
-                              <td><?php echo htmlspecialchars($user['username']); ?></td>
-                            </tr>
-                            <tr>
-                              <td>Email:</td>
-                              <td><?php echo htmlspecialchars($user['email']); ?></td>
-                            </tr>
-                            <tr>
-                              <td>Role:</td>
-                              <td><span class="badge bg-<?php echo $user['role'] == 'admin' ? 'primary' : 'info'; ?>"><?php echo ucfirst($user['role']); ?></span></td>
-                            </tr>
-                            <tr>
-                              <td>Account Created:</td>
-                              <td><?php echo date('F j, Y', strtotime($user['created_at'])); ?></td>
-                            </tr>
-                          </tbody>
-                        </table>
-                      </div>
+
+                <!-- Recent Medical Records -->
+                <div class="col-lg-3 mb-4">
+                    <div class="activity-card">
+                        <div class="activity-header">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <h6 class="mb-0"><i class="bx bx-file me-2 text-success"></i>Recent Records</h6>
+                                <a href="../patients/medical_records.php" class="btn btn-sm btn-success">View All</a>
+                            </div>
+                        </div>
+                        <div class="activity-body">
+                            <?php if (empty($recent_records)): ?>
+                                <div class="text-center py-4">
+                                    <i class="bx bx-file display-2 text-muted"></i>
+                                    <p class="mt-2 text-muted small">No records yet</p>
+                                </div>
+                            <?php else: ?>
+                                <?php foreach ($recent_records as $record): ?>
+                                <div class="activity-item-enhanced">
+                                    <div class="d-flex align-items-center">
+                                        <div class="patient-avatar-large" style="background: linear-gradient(135deg, #28a745, #20c997);">
+                                            <?php echo strtoupper(substr($record['first_name'], 0, 1) . substr($record['last_name'], 0, 1)); ?>
+                                        </div>
+                                        <div class="flex-grow-1">
+                                            <a href="../patients/medical_records_action.php?action=view&id=<?php echo $record['id']; ?>" class="text-decoration-none">
+                                                <h6 class="mb-1 fw-bold"><?php echo htmlspecialchars($record['first_name'] . ' ' . $record['last_name']); ?></h6>
+                                            </a>
+                                            <div class="d-flex justify-content-between align-items-center">
+                                                <small class="text-muted">
+                                                    <i class="bx bx-health me-1"></i><?php echo htmlspecialchars(substr($record['diagnosis'], 0, 20)); ?><?php echo strlen($record['diagnosis']) > 20 ? '...' : ''; ?>
+                                                </small>
+                                                <span class="badge bg-light text-dark"><?php echo date('M j', strtotime($record['visit_date'])); ?></span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <?php endforeach; ?>
+                            <?php endif; ?>
+                        </div>
                     </div>
-                  </div>
                 </div>
-              </div>
+
+                <!-- Upcoming Appointments -->
+                <div class="col-lg-3 mb-4">
+                    <div class="activity-card">
+                        <div class="activity-header">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <h6 class="mb-0"><i class="bx bx-calendar me-2 text-info"></i>Upcoming Appointments</h6>
+                                <span class="badge bg-info"><?php echo count($upcoming_appointments); ?></span>
+                            </div>
+                        </div>
+                        <div class="activity-body">
+                            <?php if (empty($upcoming_appointments)): ?>
+                                <div class="text-center py-4">
+                                    <i class="bx bx-calendar-check display-2 text-muted"></i>
+                                    <p class="mt-2 text-muted small">No upcoming appointments</p>
+                                </div>
+                            <?php else: ?>
+                                <?php foreach ($upcoming_appointments as $appointment): ?>
+                                <div class="activity-item-enhanced">
+                                    <div class="d-flex justify-content-between align-items-start">
+                                        <div class="d-flex align-items-center flex-grow-1">
+                                            <div class="patient-avatar-large" style="background: linear-gradient(135deg, #17a2b8, #138496);">
+                                                <?php echo strtoupper(substr($appointment['first_name'], 0, 1) . substr($appointment['last_name'], 0, 1)); ?>
+                                            </div>
+                                            <div>
+                                                <h6 class="mb-1 fw-bold"><?php echo htmlspecialchars($appointment['first_name'] . ' ' . $appointment['last_name']); ?></h6>
+                                                <small class="text-muted">
+                                                    <i class="bx bx-health me-1"></i><?php echo htmlspecialchars(substr($appointment['diagnosis'], 0, 15)); ?><?php echo strlen($appointment['diagnosis']) > 15 ? '...' : ''; ?>
+                                                </small>
+                                            </div>
+                                        </div>
+                                        <div class="text-end">
+                                            <span class="appointment-badge"><?php echo date('M j', strtotime($appointment['next_appointment'])); ?></span>
+                                            <div class="mt-1">
+                                                <small class="text-success"><span class="upcoming-indicator"></span> <?php echo date('H:i', strtotime($appointment['next_appointment'])); ?></small>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <?php endforeach; ?>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                </div>
             </div>
-            <!-- / Content -->
 
-            <!-- Footer -->
-            <footer class="content-footer footer bg-footer-theme">
-              <div class="container-xxl d-flex flex-wrap justify-content-between py-2 flex-md-row flex-column">
-                <div class="mb-2 mb-md-0">
-                  ©
-                  <script>
-                    document.write(new Date().getFullYear());
-                  </script>
-                  , made with ❤️ by
-                  <a href="https://themeselection.com" target="_blank" class="footer-link fw-bolder">ThemeSelection</a>
+            <!-- Charts Section -->
+            <div class="row mb-5">
+                <div class="col-lg-6 mb-4">
+                    <div class="chart-container">
+                        <div class="d-flex justify-content-between align-items-center mb-4">
+                            <h5 class="mb-0"><i class="bx bx-bar-chart me-2 text-primary"></i>BMI Distribution</h5>
+                            <span class="badge bg-primary">Health Stats</span>
+                        </div>
+                        <canvas id="bmiChart" style="max-height: 350px;"></canvas>
+                    </div>
                 </div>
-              </div>
-            </footer>
-            <!-- / Footer -->
 
-            <div class="content-backdrop fade"></div>
-          </div>
-          <!-- Content wrapper -->
+                <div class="col-lg-6 mb-4">
+                    <div class="chart-container">
+                        <div class="d-flex justify-content-between align-items-center mb-4">
+                            <h5 class="mb-0"><i class="bx bx-line-chart me-2 text-success"></i>Monthly Registrations</h5>
+                            <span class="badge bg-success">Trends</span>
+                        </div>
+                        <canvas id="monthlyChart" style="max-height: 350px;"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quick Actions -->
+            <div class="row mb-5">
+                <div class="col-12">
+                    <h5 class="mb-4"><i class="bx bx-lightning me-2 text-warning"></i>Quick Actions</h5>
+                    <div class="quick-action-grid">
+                        <?php 
+                        $quick_actions = [
+                            ['href' => '../patients/patients_action.php?action=add', 'icon' => 'bx-user-plus', 'color' => 'primary', 'title' => 'Add Patient', 'desc' => 'Register new patient'],
+                            ['href' => '../doctors/doctors_action.php?action=add', 'icon' => 'bx-user-check', 'color' => 'warning', 'title' => 'Add Doctor', 'desc' => 'Register new doctor'],
+                            ['href' => '../patients/medical_records_action.php?action=add', 'icon' => 'bx-file-plus', 'color' => 'success', 'title' => 'New Record', 'desc' => 'Create medical record'],
+                            ['href' => '../patients/patients.php', 'icon' => 'bx-search', 'color' => 'info', 'title' => 'Search Patients', 'desc' => 'Find patient records'],
+                            ['href' => '../doctors/doctors.php', 'icon' => 'bx-group', 'color' => 'warning', 'title' => 'View Doctors', 'desc' => 'Manage doctors'],
+                            ['href' => '../patients/medical_records.php', 'icon' => 'bx-library', 'color' => 'secondary', 'title' => 'View Reports', 'desc' => 'Medical reports']
+                        ];
+                        foreach ($quick_actions as $action): ?>
+                        <a href="<?php echo $action['href']; ?>" class="quick-action-item">
+                            <div class="mb-3">
+                                <i class="bx <?php echo $action['icon']; ?> text-<?php echo $action['color']; ?>" style="font-size: 2.5rem;"></i>
+                            </div>
+                            <h6 class="mb-2"><?php echo $action['title']; ?></h6>
+                            <p class="text-muted mb-0"><?php echo $action['desc']; ?></p>
+                        </a>
+                        <?php endforeach; ?>
+                    </div>
+                </div>
+            </div>
+
+            <!-- System Status -->
+            <div class="system-status">
+                <h5 class="mb-4"><i class="bx bx-cog me-2 text-secondary"></i>System Status</h5>
+                <div class="row">
+                    <?php 
+                    $status_items = [
+                        ['icon' => 'bx-check', 'color' => 'linear-gradient(135deg, #28a745, #20c997)', 'title' => 'Database Connection', 'status' => 'Online - Healthy', 'class' => 'success'],
+                        ['icon' => 'bx-server', 'color' => 'linear-gradient(135deg, #007bff, #0056b3)', 'title' => 'Server Status', 'status' => 'Running - Normal', 'class' => 'primary'],
+                        ['icon' => 'bx-shield', 'color' => 'linear-gradient(135deg, #ffc107, #e0a800)', 'title' => 'Security', 'status' => 'Protected - SSL Active', 'class' => 'warning'],
+                        ['icon' => 'bx-time', 'color' => 'linear-gradient(135deg, #17a2b8, #138496)', 'title' => 'Last Backup', 'status' => 'Today - ' . date('H:i'), 'class' => 'info']
+                    ];
+                    foreach ($status_items as $status): ?>
+                    <div class="col-md-6 col-lg-3">
+                        <div class="status-item">
+                            <div class="status-icon" style="background: <?php echo $status['color']; ?>;">
+                                <i class="bx <?php echo $status['icon']; ?>"></i>
+                            </div>
+                            <div>
+                                <h6 class="mb-1"><?php echo $status['title']; ?></h6>
+                                <small class="text-<?php echo $status['class']; ?>"><?php echo $status['status']; ?></small>
+                            </div>
+                        </div>
+                    </div>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+
         </div>
-        <!-- / Layout page -->
-      </div>
-
-      <!-- Overlay -->
-      <div class="layout-overlay layout-menu-toggle"></div>
     </div>
-    <!-- / Layout wrapper -->
+</div>
 
-    <!-- Core JS -->
-    <!-- build:js assets/vendor/js/core.js -->
-    <script src="../assets/vendor/libs/jquery/jquery.js"></script>
-    <script src="../assets/vendor/libs/popper/popper.js"></script>
-    <script src="../assets/vendor/js/bootstrap.js"></script>
-    <script src="../assets/vendor/libs/perfect-scrollbar/perfect-scrollbar.js"></script>
+<!-- Chart.js Scripts -->
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // BMI Chart
+    const bmiCtx = document.getElementById('bmiChart').getContext('2d');
+    new Chart(bmiCtx, {
+        type: 'doughnut',
+        data: {
+            labels: ['Underweight', 'Normal', 'Overweight', 'Obese'],
+            datasets: [{
+                data: [<?php echo $bmi_stats['underweight']; ?>, <?php echo $bmi_stats['normal']; ?>, <?php echo $bmi_stats['overweight']; ?>, <?php echo $bmi_stats['obese']; ?>],
+                backgroundColor: ['#28a745', '#17a2b8', '#ffc107', '#dc3545'],
+                borderWidth: 3,
+                borderColor: '#fff'
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                    labels: { padding: 20, usePointStyle: true, font: { size: 12, weight: 'bold' } }
+                }
+            }
+        }
+    });
 
-    <script src="../assets/vendor/js/menu.js"></script>
-    <!-- endbuild -->
+    // Monthly Chart
+    const monthlyCtx = document.getElementById('monthlyChart').getContext('2d');
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const monthlyData = new Array(12).fill(0);
+    <?php foreach ($monthly_stats as $stat): ?>
+    monthlyData[<?php echo $stat['month'] - 1; ?>] = <?php echo $stat['count']; ?>;
+    <?php endforeach; ?>
 
-    <!-- Vendors JS -->
+    new Chart(monthlyCtx, {
+        type: 'line',
+        data: {
+            labels: monthNames,
+            datasets: [{
+                label: 'New Patients',
+                data: monthlyData,
+                borderColor: '#28a745',
+                backgroundColor: 'rgba(40, 167, 69, 0.1)',
+                borderWidth: 3,
+                fill: true,
+                tension: 0.4,
+                pointBackgroundColor: '#28a745',
+                pointBorderColor: '#fff',
+                pointBorderWidth: 2,
+                pointRadius: 6,
+                pointHoverRadius: 8
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+                y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.1)' } },
+                x: { grid: { display: false } }
+            }
+        }
+    });
 
-    <!-- Main JS -->
-    <script src="../assets/js/main.js"></script>
+    // Animations
+    const observer = new IntersectionObserver(function(entries) {
+        entries.forEach(entry => {
+            if (entry.isIntersecting) {
+                entry.target.style.opacity = '1';
+                entry.target.style.transform = 'translateY(0)';
+            }
+        });
+    }, { threshold: 0.1 });
 
-    <!-- Page JS -->
-  </body>
-</html>
+    document.querySelectorAll('.activity-item-enhanced').forEach(item => {
+        item.style.opacity = '0';
+        item.style.transform = 'translateY(20px)';
+        item.style.transition = 'all 0.6s ease';
+        observer.observe(item);
+    });
+
+    // Counter Animation
+    function animateCounter(element, target) {
+        let current = 0;
+        const increment = target / 50;
+        const timer = setInterval(() => {
+            current += increment;
+            if (current >= target) {
+                current = target;
+                clearInterval(timer);
+            }
+            element.textContent = Math.floor(current).toLocaleString();
+        }, 20);
+    }
+
+    const statsObserver = new IntersectionObserver(function(entries) {
+        entries.forEach(entry => {
+            if (entry.isIntersecting) {
+                const statsNumber = entry.target.querySelector('.stats-number-large');
+                if (statsNumber && !statsNumber.dataset.animated) {
+                    const target = parseInt(statsNumber.textContent.replace(/,/g, ''));
+                    statsNumber.dataset.animated = 'true';
+                    animateCounter(statsNumber, target);
+                }
+            }
+        });
+    }, { threshold: 0.5 });
+
+    document.querySelectorAll('.dashboard-stats-card').forEach(card => {
+        statsObserver.observe(card);
+    });
+
+    // Loading states for buttons
+    document.querySelectorAll('.quick-action-item').forEach(item => {
+        item.addEventListener('click', function() {
+            const icon = this.querySelector('i');
+            const originalClass = icon.className;
+            icon.className = 'bx bx-loader-alt bx-spin';
+            setTimeout(() => icon.className = originalClass, 1000);
+        });
+    });
+});
+</script>
+
+<?php include '../includes/footer.php'; ?>

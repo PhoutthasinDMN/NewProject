@@ -53,7 +53,7 @@ if ($user_id > 0 && isset($conn)) {
     <div class="menu-inner-shadow"></div>
 
     <ul class="menu-inner py-1">
-        <!-- Dashboard -->
+        <!-- 1. Dashboard -->
         <li class="menu-item <?php echo ($current_page == 'index' && $current_dir == 'dashboard') ? 'active' : ''; ?>">
             <a href="<?php echo isset($base_url) ? $base_url : '../dashboard/'; ?>index.php" class="menu-link">
                 <i class="menu-icon tf-icons bx bx-home-circle"></i>
@@ -61,28 +61,8 @@ if ($user_id > 0 && isset($conn)) {
             </a>
         </li>
 
-        <!-- Profile -->
-        <li class="menu-item <?php echo (in_array($current_page, ['profile', 'profile-edit']) || ($current_dir == 'profile')) ? 'active open' : ''; ?>">
-            <a href="javascript:void(0);" class="menu-link menu-toggle">
-                <i class="menu-icon tf-icons bx bx-user"></i>
-                <div>Profile</div>
-            </a>
-            <ul class="menu-sub">
-                <li class="menu-item <?php echo ($current_page == 'profile') ? 'active' : ''; ?>">
-                    <a href="<?php echo isset($base_url) ? $base_url : '../dashboard/'; ?>profile.php" class="menu-link">
-                        <div>View Profile</div>
-                    </a>
-                </li>
-                <li class="menu-item <?php echo ($current_page == 'profile-edit') ? 'active' : ''; ?>">
-                    <a href="<?php echo isset($base_url) ? $base_url : '../dashboard/'; ?>profile-edit.php" class="menu-link">
-                        <div>Edit Profile</div>
-                    </a>
-                </li>
-            </ul>
-        </li>
-
         <?php if ($isAdmin): ?>
-        <!-- Patients (Admin Only) -->
+        <!-- 2. Patients (Admin Only) -->
         <li class="menu-item <?php echo ($current_dir == 'patients' || in_array($current_page, ['patients', 'patient_view', 'patients_action'])) ? 'active open' : ''; ?>">
             <a href="javascript:void(0);" class="menu-link menu-toggle">
                 <i class="menu-icon tf-icons bx bx-group"></i>
@@ -110,84 +90,9 @@ if ($user_id > 0 && isset($conn)) {
                 </li>
             </ul>
         </li>
-
-        <!-- Doctors (Admin Only) -->
-        <li class="menu-item <?php echo ($current_dir == 'doctors' || in_array($current_page, ['doctors', 'doctor_view', 'doctors_action'])) ? 'active open' : ''; ?>">
-            <a href="javascript:void(0);" class="menu-link menu-toggle">
-                <i class="menu-icon tf-icons bx bx-user-check"></i>
-                <div>Doctors</div>
-                <?php
-                // Get doctor count for badge (optional)
-                if (isset($conn)) {
-                    $doctor_count = $conn->query("SELECT COUNT(*) as count FROM doctors")->fetch_assoc()['count'] ?? 0;
-                    if ($doctor_count > 0) {
-                        echo '<div class="badge badge-center rounded-pill bg-warning ms-auto">' . $doctor_count . '</div>';
-                    }
-                }
-                ?>
-            </a>
-            <ul class="menu-sub">
-                <li class="menu-item <?php echo ($current_page == 'doctors_action' && (!isset($_GET['action']) || $_GET['action'] == 'list')) ? 'active' : ''; ?>">
-                    <a href="<?php echo isset($doctors_url) ? $doctors_url : '../doctors/'; ?>doctors_action.php" class="menu-link">
-                        <div>All Doctors</div>
-                    </a>
-                </li>
-                <li class="menu-item <?php echo ($current_page == 'doctors_action' && (isset($_GET['action']) && $_GET['action'] == 'add')) ? 'active' : ''; ?>">
-                    <a href="<?php echo isset($doctors_url) ? $doctors_url : '../doctors/'; ?>doctors_action.php?action=add" class="menu-link">
-                        <div>Add Doctor</div>
-                    </a>
-                </li>
-            </ul>
-        </li>
-
-        <!-- Nurses (Admin Only) -->
-        <li class="menu-item <?php echo ($current_dir == 'nurses' || in_array($current_page, ['nurses_action', 'nurse_view'])) ? 'active open' : ''; ?>">
-            <a href="javascript:void(0);" class="menu-link menu-toggle">
-                <i class="menu-icon tf-icons bx bx-plus-medical"></i>
-                <div>Nurses</div>
-                <?php
-                // Get nurse count for badge (optional)
-                if (isset($conn)) {
-                    $nurse_count = $conn->query("SELECT COUNT(*) as count FROM nurses WHERE status = 'Active'")->fetch_assoc()['count'] ?? 0;
-                    if ($nurse_count > 0) {
-                        echo '<div class="badge badge-center rounded-pill bg-success ms-auto">' . $nurse_count . '</div>';
-                    }
-                }
-                ?>
-            </a>
-            <ul class="menu-sub">
-                <li class="menu-item <?php echo ($current_page == 'nurses_action' && (!isset($_GET['action']) || $_GET['action'] == 'list')) ? 'active' : ''; ?>">
-                    <a href="<?php echo isset($nurses_url) ? $nurses_url : '../nurses/'; ?>nurses_action.php" class="menu-link">
-                        <div>All Nurses</div>
-                    </a>
-                </li>
-                <li class="menu-item <?php echo ($current_page == 'nurses_action' && (isset($_GET['action']) && $_GET['action'] == 'add')) ? 'active' : ''; ?>">
-                    <a href="<?php echo isset($nurses_url) ? $nurses_url : '../nurses/'; ?>nurses_action.php?action=add" class="menu-link">
-                        <div>Add Nurse</div>
-                    </a>
-                </li>
-            </ul>
-        </li>
-
-        <!-- Settings (Admin Only) -->
-        <li class="menu-item <?php echo ($current_page == 'settings' || $current_page == 'user-add' || $current_page == 'user-edit') ? 'active' : ''; ?>">
-            <a href="<?php echo isset($base_url) ? $base_url : '../dashboard/'; ?>settings.php" class="menu-link">
-                <i class="menu-icon tf-icons bx bx-cog"></i>
-                <div>Settings</div>
-                <?php
-                // Get user count for badge (optional)
-                if (isset($conn)) {
-                    $user_count = $conn->query("SELECT COUNT(*) as count FROM users")->fetch_assoc()['count'] ?? 0;
-                    if ($user_count > 1) { // More than 1 user (current admin)
-                        echo '<div class="badge badge-center rounded-pill bg-secondary ms-auto">' . $user_count . '</div>';
-                    }
-                }
-                ?>
-            </a>
-        </li>
         <?php endif; ?>
 
-        <!-- Medical Records (Available for all users) -->
+        <!-- 3. Medical Records (Available for all users) -->
         <li class="menu-item <?php echo ($current_dir == 'medical_records' || in_array($current_page, ['medical_records', 'medical_records_action', 'medical_record_view'])) ? 'active open' : ''; ?>">
             <a href="javascript:void(0);" class="menu-link menu-toggle">
                 <i class="menu-icon tf-icons bx bx-file-blank"></i>
@@ -216,7 +121,7 @@ if ($user_id > 0 && isset($conn)) {
             </ul>
         </li>
 
-        <!-- Appointments (Available for all users) -->
+        <!-- 4. Appointments (Available for all users) -->
         <li class="menu-item <?php echo ($current_dir == 'appointments' || in_array($current_page, ['appointments', 'appointment_view', 'appointments_action'])) ? 'active open' : ''; ?>">
             <a href="javascript:void(0);" class="menu-link menu-toggle">
                 <i class="menu-icon tf-icons bx bx-calendar"></i>
@@ -250,110 +155,111 @@ if ($user_id > 0 && isset($conn)) {
             </ul>
         </li>
 
-        <!-- Reports (Available for all users) -->
-        <li class="menu-item <?php echo ($current_dir == 'reports' || in_array($current_page, ['reports', 'analytics', 'export'])) ? 'active open' : ''; ?>">
-            <a href="javascript:void(0);" class="menu-link menu-toggle">
-                <i class="menu-icon tf-icons bx bx-bar-chart-alt-2"></i>
-                <div>Reports</div>
-            </a>
-            <ul class="menu-sub">
-                <?php if ($isAdmin): ?>
-                <li class="menu-item <?php echo ($current_page == 'patients' && $current_dir == 'reports') ? 'active' : ''; ?>">
-                    <a href="<?php echo isset($reports_url) ? $reports_url : '../reports/'; ?>patients.php" class="menu-link">
-                        <div>Patient Reports</div>
-                    </a>
-                </li>
-                <li class="menu-item <?php echo ($current_page == 'medical' && $current_dir == 'reports') ? 'active' : ''; ?>">
-                    <a href="<?php echo isset($reports_url) ? $reports_url : '../reports/'; ?>medical.php" class="menu-link">
-                        <div>Medical Reports</div>
-                    </a>
-                </li>
-                <?php endif; ?>
-                <li class="menu-item <?php echo ($current_page == 'analytics') ? 'active' : ''; ?>">
-                    <a href="<?php echo isset($reports_url) ? $reports_url : '../reports/'; ?>analytics.php" class="menu-link">
-                        <div>Analytics</div>
-                    </a>
-                </li>
-                <li class="menu-item <?php echo ($current_page == 'export') ? 'active' : ''; ?>">
-                    <a href="<?php echo isset($reports_url) ? $reports_url : '../reports/'; ?>export.php" class="menu-link">
-                        <div>Export Data</div>
-                    </a>
-                </li>
-            </ul>
-        </li>
-
-        <!-- Inventory (Available for all users) -->
-        <li class="menu-item <?php echo ($current_dir == 'inventory' || in_array($current_page, ['inventory', 'medicines', 'equipment'])) ? 'active open' : ''; ?>">
-            <a href="javascript:void(0);" class="menu-link menu-toggle">
-                <i class="menu-icon tf-icons bx bx-package"></i>
-                <div>Inventory</div>
-            </a>
-            <ul class="menu-sub">
-                <li class="menu-item <?php echo ($current_page == 'medicines') ? 'active' : ''; ?>">
-                    <a href="<?php echo isset($inventory_url) ? $inventory_url : '../inventory/'; ?>medicines.php" class="menu-link">
-                        <div>Medicines</div>
-                    </a>
-                </li>
-                <li class="menu-item <?php echo ($current_page == 'equipment') ? 'active' : ''; ?>">
-                    <a href="<?php echo isset($inventory_url) ? $inventory_url : '../inventory/'; ?>equipment.php" class="menu-link">
-                        <div>Equipment</div>
-                    </a>
-                </li>
-                <?php if ($isAdmin): ?>
-                <li class="menu-item <?php echo ($current_page == 'stock') ? 'active' : ''; ?>">
-                    <a href="<?php echo isset($inventory_url) ? $inventory_url : '../inventory/'; ?>stock.php" class="menu-link">
-                        <div>Stock Management</div>
-                    </a>
-                </li>
-                <?php endif; ?>
-            </ul>
-        </li>
-
-        <!-- Quick Actions Section -->
-        <li class="menu-header small text-uppercase">
-            <span class="menu-header-text">Quick Actions</span>
-        </li>
-
         <?php if ($isAdmin): ?>
-        <!-- Quick Add Patient (Admin Only) -->
-        <li class="menu-item">
-            <a href="<?php echo isset($patients_url) ? $patients_url : '../patients/'; ?>patients_action.php?action=add" class="menu-link">
-                <i class="menu-icon tf-icons bx bx-plus-circle text-success"></i>
-                <div>Add Patient</div>
+        <!-- 5. Doctors (Admin Only) -->
+        <li class="menu-item <?php echo ($current_dir == 'doctors' || in_array($current_page, ['doctors', 'doctor_view', 'doctors_action'])) ? 'active open' : ''; ?>">
+            <a href="javascript:void(0);" class="menu-link menu-toggle">
+                <i class="menu-icon tf-icons bx bx-user-check"></i>
+                <div>Doctors</div>
+                <?php
+                // Get doctor count for badge (optional)
+                if (isset($conn)) {
+                    $doctor_count = $conn->query("SELECT COUNT(*) as count FROM doctors")->fetch_assoc()['count'] ?? 0;
+                    if ($doctor_count > 0) {
+                        echo '<div class="badge badge-center rounded-pill bg-warning ms-auto">' . $doctor_count . '</div>';
+                    }
+                }
+                ?>
             </a>
+            <ul class="menu-sub">
+                <li class="menu-item <?php echo ($current_page == 'doctors_action' && (!isset($_GET['action']) || $_GET['action'] == 'list')) ? 'active' : ''; ?>">
+                    <a href="<?php echo isset($doctors_url) ? $doctors_url : '../doctors/'; ?>doctors_action.php" class="menu-link">
+                        <div>All Doctors</div>
+                    </a>
+                </li>
+                <li class="menu-item <?php echo ($current_page == 'doctors_action' && (isset($_GET['action']) && $_GET['action'] == 'add')) ? 'active' : ''; ?>">
+                    <a href="<?php echo isset($doctors_url) ? $doctors_url : '../doctors/'; ?>doctors_action.php?action=add" class="menu-link">
+                        <div>Add Doctor</div>
+                    </a>
+                </li>
+            </ul>
         </li>
 
-        <!-- Quick Add Doctor (Admin Only) -->
-        <li class="menu-item">
-            <a href="<?php echo isset($doctors_url) ? $doctors_url : '../doctors/'; ?>doctors_action.php?action=add" class="menu-link">
-                <i class="menu-icon tf-icons bx bx-user-plus text-warning"></i>
-                <div>Add Doctor</div>
+        <!-- 6. Nurses (Admin Only) -->
+        <li class="menu-item <?php echo ($current_dir == 'nurses' || in_array($current_page, ['nurses_action', 'nurse_view'])) ? 'active open' : ''; ?>">
+            <a href="javascript:void(0);" class="menu-link menu-toggle">
+                <i class="menu-icon tf-icons bx bx-plus-medical"></i>
+                <div>Nurses</div>
+                <?php
+                // Get nurse count for badge (optional)
+                if (isset($conn)) {
+                    $nurse_count = $conn->query("SELECT COUNT(*) as count FROM nurses WHERE status = 'Active'")->fetch_assoc()['count'] ?? 0;
+                    if ($nurse_count > 0) {
+                        echo '<div class="badge badge-center rounded-pill bg-success ms-auto">' . $nurse_count . '</div>';
+                    }
+                }
+                ?>
             </a>
+            <ul class="menu-sub">
+                <li class="menu-item <?php echo ($current_page == 'nurses_action' && (!isset($_GET['action']) || $_GET['action'] == 'list')) ? 'active' : ''; ?>">
+                    <a href="<?php echo isset($nurses_url) ? $nurses_url : '../nurses/'; ?>nurses_action.php" class="menu-link">
+                        <div>All Nurses</div>
+                    </a>
+                </li>
+                <li class="menu-item <?php echo ($current_page == 'nurses_action' && (isset($_GET['action']) && $_GET['action'] == 'add')) ? 'active' : ''; ?>">
+                    <a href="<?php echo isset($nurses_url) ? $nurses_url : '../nurses/'; ?>nurses_action.php?action=add" class="menu-link">
+                        <div>Add Nurse</div>
+                    </a>
+                </li>
+            </ul>
         </li>
         <?php endif; ?>
 
-        <!-- Quick Add Medical Record (Available for all users) -->
-        <li class="menu-item">
-            <a href="<?php echo isset($medical_records_url) ? $medical_records_url : '../medical_records/'; ?>medical_records_action.php?action=add" class="menu-link">
-                <i class="menu-icon tf-icons bx bx-file-plus text-info"></i>
-                <div>New Record</div>
+        <!-- 7. Profile -->
+        <li class="menu-item <?php echo (in_array($current_page, ['profile', 'profile-edit']) || ($current_dir == 'profile')) ? 'active open' : ''; ?>">
+            <a href="javascript:void(0);" class="menu-link menu-toggle">
+                <i class="menu-icon tf-icons bx bx-user"></i>
+                <div>Profile</div>
             </a>
+            <ul class="menu-sub">
+                <li class="menu-item <?php echo ($current_page == 'profile') ? 'active' : ''; ?>">
+                    <a href="<?php echo isset($base_url) ? $base_url : '../dashboard/'; ?>profile.php" class="menu-link">
+                        <div>View Profile</div>
+                    </a>
+                </li>
+                <li class="menu-item <?php echo ($current_page == 'profile-edit') ? 'active' : ''; ?>">
+                    <a href="<?php echo isset($base_url) ? $base_url : '../dashboard/'; ?>profile-edit.php" class="menu-link">
+                        <div>Edit Profile</div>
+                    </a>
+                </li>
+            </ul>
         </li>
 
-        <!-- Quick Schedule Appointment (Available for all users) -->
-        <li class="menu-item">
-            <a href="<?php echo isset($appointments_url) ? $appointments_url : '../appointments/'; ?>appointments_action.php?action=add" class="menu-link">
-                <i class="menu-icon tf-icons bx bx-calendar-plus text-primary"></i>
-                <div>Schedule Appointment</div>
+        <?php if ($isAdmin): ?>
+        <!-- 8. Settings (Admin Only) -->
+        <li class="menu-item <?php echo ($current_page == 'settings' || $current_page == 'user-add' || $current_page == 'user-edit') ? 'active' : ''; ?>">
+            <a href="<?php echo isset($base_url) ? $base_url : '../dashboard/'; ?>settings.php" class="menu-link">
+                <i class="menu-icon tf-icons bx bx-cog"></i>
+                <div>Settings</div>
+                <?php
+                // Get user count for badge (optional)
+                if (isset($conn)) {
+                    $user_count = $conn->query("SELECT COUNT(*) as count FROM users")->fetch_assoc()['count'] ?? 0;
+                    if ($user_count > 1) { // More than 1 user (current admin)
+                        echo '<div class="badge badge-center rounded-pill bg-secondary ms-auto">' . $user_count . '</div>';
+                    }
+                }
+                ?>
             </a>
         </li>
+        <?php endif; ?>
 
         <!-- User Information Section -->
         <li class="menu-header small text-uppercase">
             <span class="menu-header-text">Account</span>
         </li>
 
-        <!-- Role Badge -->
+        <!-- 9. Role Badge -->
         <li class="menu-item">
             <div class="menu-link disabled">
                 <i class="menu-icon tf-icons bx bx-shield"></i>
@@ -366,7 +272,7 @@ if ($user_id > 0 && isset($conn)) {
             </div>
         </li>
 
-        <!-- Logout -->
+        <!-- 10. Logout -->
         <li class="menu-item">
             <a href="<?php echo isset($auth_url) ? $auth_url : '../auth/'; ?>logout.php" class="menu-link" onclick="return confirm('Are you sure you want to logout?')">
                 <i class="menu-icon tf-icons bx bx-log-out text-danger"></i>
@@ -484,22 +390,6 @@ if ($user_id > 0 && isset($conn)) {
     100% {
         transform: scale(1);
     }
-}
-
-/* Admin only items highlight */
-.menu-item[data-admin-only="true"] {
-    position: relative;
-}
-
-.menu-item[data-admin-only="true"]::before {
-    content: '';
-    position: absolute;
-    left: 0;
-    top: 0;
-    bottom: 0;
-    width: 3px;
-    background: linear-gradient(45deg, #dc3545, #ff6b6b);
-    opacity: 0.6;
 }
 </style>
     

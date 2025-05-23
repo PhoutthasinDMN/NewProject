@@ -320,13 +320,13 @@ include '../includes/sidebar.php';
                                                     </td>
                                                     <td>
                                                         <div class="btn-group" role="group">
-                                                            <a href="medical_record_view.php?id=<?php echo $record['id']; ?>" class="btn btn-sm btn-outline-info" title="View">
+                                                            <a href="medical_record_view.php?id=<?php echo $record['id']; ?>" class="btn btn-sm btn-success">
                                                                 <i class="bx bx-show"></i>
                                                             </a>
-                                                            <a href="?action=edit&id=<?php echo $record['id']; ?>" class="btn btn-sm btn-outline-primary" title="Edit">
-                                                                <i class="bx bx-edit"></i>
+                                                            <a href="?action=edit&id=<?php echo $record['id']; ?>" class="btn btn-sm btn-primary">
+                                                                <i class="bx bx-edit-alt"></i>
                                                             </a>
-                                                            <button type="button" class="btn btn-sm btn-outline-danger" onclick="confirmDelete(<?php echo $record['id']; ?>, '<?php echo htmlspecialchars($record['first_name'] . ' ' . $record['last_name']); ?>')" title="Delete">
+                                                            <button type="button" class="btn btn-sm btn-danger" onclick="confirmDelete(<?php echo $record['id']; ?>, '<?php echo htmlspecialchars($record['first_name'] . ' ' . $record['last_name']); ?>')" title="Delete">
                                                                 <i class="bx bx-trash"></i>
                                                             </button>
                                                         </div>

@@ -284,7 +284,7 @@ if ($patients_result && $patients_result->num_rows > 0) {
                                                             <a href="patients_action.php?action=edit&id=<?php echo $patient['id']; ?>" class="btn btn-sm btn-primary">
                                                                 <i class="bx bx-edit-alt"></i>
                                                             </a>
-                                                            <a href="medical_records.php?patient_id=<?php echo $patient['id']; ?>" class="btn btn-sm btn-info">
+                                                            <a href="../medical_records/medical_records.php?patient_id=<?php echo $patient['id']; ?>" class="btn btn-sm btn-info">
                                                                 <i class="bx bx-file"></i>
                                                             </a>
                                                             <a href="patients_action.php?action=delete&id=<?php echo $patient['id']; ?>" class="btn btn-sm btn-danger" onclick="return confirm('Are you sure you want to delete this patient?');">
@@ -303,18 +303,7 @@ if ($patients_result && $patients_result->num_rows > 0) {
                     <!-- / Content -->
 
                     <!-- Footer -->
-                    <footer class="content-footer footer bg-footer-theme">
-                        <div class="container-xxl d-flex flex-wrap justify-content-between py-2 flex-md-row flex-column">
-                            <div class="mb-2 mb-md-0">
-                                ©
-                                <script>
-                                    document.write(new Date().getFullYear());
-                                </script>
-                                , made with ❤️ by
-                                <a href="https://themeselection.com" target="_blank" class="footer-link fw-bolder">ThemeSelection</a>
-                            </div>
-                        </div>
-                    </footer>
+                <?php include '../includes/footer.php'; ?>
                     <!-- / Footer -->
 
                     <div class="content-backdrop fade"></div>

@@ -56,6 +56,7 @@ if (!isset($page_title)) {
     <script src="<?php echo $assets_path; ?>js/config.js"></script>
     
     <style>
+        
         /* Medical System Custom Styles */
         :root {
             --primary-color: #696cff;
@@ -131,14 +132,14 @@ if (!isset($page_title)) {
             flex-shrink: 0;
         }
         
-        .table th { 
+        /* .table th { 
             background-color: var(--primary-color); 
             color: white; 
             border: none;
             font-weight: 600;
             font-size: 0.875rem;
             padding: 15px 12px;
-        }
+        } */
         
         .table td {
             padding: 12px;
@@ -261,6 +262,7 @@ if (!isset($page_title)) {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
+        
         
         /* Custom CSS from page */
         <?php if (isset($custom_css)): ?>

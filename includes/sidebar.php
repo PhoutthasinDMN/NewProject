@@ -132,6 +132,35 @@ $current_dir = basename(dirname($_SERVER['PHP_SELF']));
             </ul>
         </li>
 
+        <!-- Nurses -->
+        <li class="menu-item <?php echo ($current_dir == 'nurses' || in_array($current_page, ['nurses_action', 'nurse_view'])) ? 'active open' : ''; ?>">
+            <a href="javascript:void(0);" class="menu-link menu-toggle">
+                <i class="menu-icon tf-icons bx bx-plus-medical"></i>
+                <div>Nurses</div>
+                <?php
+                // Get nurse count for badge (optional)
+                if (isset($conn)) {
+                    $nurse_count = $conn->query("SELECT COUNT(*) as count FROM nurses WHERE status = 'Active'")->fetch_assoc()['count'] ?? 0;
+                    if ($nurse_count > 0) {
+                        echo '<div class="badge badge-center rounded-pill bg-success ms-auto">' . $nurse_count . '</div>';
+                    }
+                }
+                ?>
+            </a>
+            <ul class="menu-sub">
+                <li class="menu-item <?php echo ($current_page == 'nurses_action' && (!isset($_GET['action']) || $_GET['action'] == 'list')) ? 'active' : ''; ?>">
+                    <a href="<?php echo isset($nurses_url) ? $nurses_url : '../nurses/'; ?>nurses_action.php" class="menu-link">
+                        <div>All Nurses</div>
+                    </a>
+                </li>
+                <li class="menu-item <?php echo ($current_page == 'nurses_action' && (isset($_GET['action']) && $_GET['action'] == 'add')) ? 'active' : ''; ?>">
+                    <a href="<?php echo isset($nurses_url) ? $nurses_url : '../nurses/'; ?>nurses_action.php?action=add" class="menu-link">
+                        <div>Add Nurse</div>
+                    </a>
+                </li>
+            </ul>
+        </li>
+
         <!-- Appointments -->
         <li class="menu-item <?php echo ($current_dir == 'appointments' || in_array($current_page, ['appointments', 'appointment_view', 'appointments_action'])) ? 'active open' : ''; ?>">
             <a href="javascript:void(0);" class="menu-link menu-toggle">

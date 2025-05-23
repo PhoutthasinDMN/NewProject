@@ -20,18 +20,20 @@ $stmt->execute();
 $user = $stmt->get_result()->fetch_assoc();
 $isAdmin = ($user['role'] == 'admin');
 
-// ดึงสถิติต่างๆ
+// ดึงสถิติต่างๆ (อัปเดตให้รวมพยาบาล)
 $stats = [
     'patients' => $conn->query("SELECT COUNT(*) as count FROM patients")->fetch_assoc()['count'],
     'records' => $conn->query("SELECT COUNT(*) as count FROM medical_records")->fetch_assoc()['count'],
     'doctors' => $conn->query("SELECT COUNT(*) as count FROM doctors")->fetch_assoc()['count'],
+    'nurses' => $conn->query("SELECT COUNT(*) as count FROM nurses WHERE status = 'Active'")->fetch_assoc()['count'],
     'appointments' => $conn->query("SELECT COUNT(*) as count FROM medical_records WHERE next_appointment > NOW()")->fetch_assoc()['count']
 ];
 
-// ดึงข้อมูลล่าสุด
+// ดึงข้อมูลล่าสุด (เพิ่มพยาบาล)
 $recent_patients = $conn->query("SELECT id, first_name, last_name, age, phone, created_at FROM patients ORDER BY created_at DESC LIMIT 5")->fetch_all(MYSQLI_ASSOC);
 $recent_records = $conn->query("SELECT mr.id, mr.diagnosis, mr.visit_date, p.first_name, p.last_name FROM medical_records mr JOIN patients p ON mr.patient_id = p.id ORDER BY mr.visit_date DESC LIMIT 5")->fetch_all(MYSQLI_ASSOC);
 $recent_doctors = $conn->query("SELECT id, first_name, last_name, specialization, phone, created_at FROM doctors ORDER BY created_at DESC LIMIT 5")->fetch_all(MYSQLI_ASSOC);
+$recent_nurses = $conn->query("SELECT id, first_name, last_name, department, position, created_at FROM nurses WHERE status = 'Active' ORDER BY created_at DESC LIMIT 5")->fetch_all(MYSQLI_ASSOC);
 $upcoming_appointments = $conn->query("SELECT mr.next_appointment, mr.diagnosis, p.first_name, p.last_name FROM medical_records mr JOIN patients p ON mr.patient_id = p.id WHERE mr.next_appointment > NOW() ORDER BY mr.next_appointment LIMIT 5")->fetch_all(MYSQLI_ASSOC);
 
 // สถิติ BMI

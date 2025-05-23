@@ -3,7 +3,7 @@
 define('DB_SERVER', 'localhost');
 define('DB_USERNAME', 'root');
 define('DB_PASSWORD', '');
-define('DB_NAME', 'sneat_auth');
+define('DB_NAME', 'Clinic_onemeds');
 
 // ตั้งค่า time zone
 date_default_timezone_set('Asia/Bangkok');

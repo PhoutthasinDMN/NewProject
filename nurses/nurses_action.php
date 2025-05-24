@@ -280,10 +280,10 @@ include '../includes/sidebar.php';
                                                     </td>
                                                     <td>
                                                         <div class="btn-group" role="group">
-                                                            <a href="?action=edit&id=<?php echo $nurse['id']; ?>" class="btn btn-sm btn-outline-primary" title="Edit">
+                                                            <a href="?action=edit&id=<?php echo $nurse['id']; ?>" class="btn btn-sm btn-primary"  title="Edit">
                                                                 <i class="bx bx-edit"></i>
                                                             </a>
-                                                            <button type="button" class="btn btn-sm btn-outline-danger" onclick="confirmDelete(<?php echo $nurse['id']; ?>, '<?php echo htmlspecialchars($nurse['first_name'] . ' ' . $nurse['last_name']); ?>')" title="Delete">
+                                                            <button type="button" class="btn btn-sm btn-danger" onclick="confirmDelete(<?php echo $nurse['id']; ?>, '<?php echo htmlspecialchars($nurse['first_name'] . ' ' . $nurse['last_name']); ?>')" title="Delete">
                                                                 <i class="bx bx-trash"></i>
                                                             </button>
                                                         </div>
@@ -468,7 +468,7 @@ include '../includes/sidebar.php';
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <a href="#" id="deleteLink" class="btn btn-danger">Delete Nurse</a>
+                <a href="#" id="deleteLink" class="btn btn-sm btn-danger">Delete Nurse</a>
             </div>
         </div>
     </div>

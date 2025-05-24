@@ -265,15 +265,15 @@ include '../includes/sidebar.php';
                                                     </td>
                                                     <td>
                                                         <div class="btn-group" role="group">
-                                                            <a href="?action=edit&id=<?php echo $doctor['id']; ?>" class="btn btn-sm btn-outline-primary" title="Edit">
+                                                            <a href="?action=edit&id=<?php echo $doctor['id']; ?>" class="btn btn-sm btn-primary" title="Edit">
                                                                 <i class="bx bx-edit"></i>
                                                             </a>
-                                                            <button type="button" class="btn btn-sm btn-outline-danger" onclick="confirmDelete(<?php echo $doctor['id']; ?>, '<?php echo htmlspecialchars($doctor['first_name'] . ' ' . $doctor['last_name']); ?>')" title="Delete">
+                                                            <button type="button" class="btn btn-sm btn-danger" onclick="confirmDelete(<?php echo $doctor['id']; ?>, '<?php echo htmlspecialchars($doctor['first_name'] . ' ' . $doctor['last_name']); ?>')" title="Delete">
                                                                 <i class="bx bx-trash"></i>
                                                             </button>
                                                         </div>
                                                     </td>
-                                                </tr>
+                                                </tr> 
                                                 <?php endforeach; ?>
                                             </tbody>
                                         </table>

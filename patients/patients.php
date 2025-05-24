@@ -135,6 +135,36 @@ $search_count = count($patients);
             padding: 2px 4px;
             border-radius: 3px;
         }
+
+        /* Styles for user role indication */
+        .user-role-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            margin-left: 8px;
+        }
+
+        .user-role-admin {
+            background-color: #e7f1ff;
+            color: #0056b3;
+        }
+
+        .user-role-user {
+            background-color: #d4edda;
+            color: #155724;
+        }
+
+        /* Enhanced button styles for better UX */
+        .btn-group .btn {
+            transition: all 0.2s ease;
+        }
+
+        .btn-group .btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
     </style>
 
     <!-- Helpers -->
@@ -150,7 +180,6 @@ $search_count = count($patients);
     <div class="layout-wrapper layout-content-navbar">
         <div class="layout-container">
 
-
             <!-- Layout container -->
             <div class="layout-page">
                 <!-- Navbar -->
@@ -161,30 +190,49 @@ $search_count = count($patients);
                 <div class="content-wrapper">
                     <!-- Content -->
                     <div class="container-xxl flex-grow-1 container-p-y">
-                        <h5 class="card-header">
-                            Patients List
-                            <a href="patients_action.php?action=add" class="btn btn-primary float-end">
-                                <i class="bx bx-plus me-1"></i> Add New Patient
-                            </a>
-                        </h5>
+                        
                         <!-- Patients List -->
                         <div class="card">
                             <div class="card-header d-flex justify-content-between align-items-center">
-                                <h4 class="fw-bold py-3 mb-4">
-                                    <span class="text-muted fw-light">Patients /</span> All Patients
-                                </h4>
-                                <div class="d-flex gap-2">
+                                <div>
+                                    <h4 class="fw-bold py-3 mb-1">
+                                        <span class="text-muted fw-light">Patients /</span> All Patients
+                                        <span class="user-role-badge <?php echo $isAdmin ? 'user-role-admin' : 'user-role-user'; ?>">
+                                            <?php echo $isAdmin ? 'Admin' : 'User'; ?> Access
+                                        </span>
+                                    </h4>
+                                
+                                </div>
+                                <div class="d-flex gap-2 align-items-center">
                                     <input type="text" id="searchInput" class="form-control" placeholder="Search records..." style="width: 250px;">
                                     <input type="date" id="dateFilter" class="form-control" style="width: 200px;">
+                                    <a href="patients_action.php?action=add" class="btn btn-primary">
+                                        <i class="bx bx-plus me-1"></i> Add New Patient
+                                    </a>
                                 </div>
                             </div>
 
-                            <div class="card-body">
+                            <div class="card-body">                      
+
+                                <!-- Search results info -->
+                                <?php if (!empty($search)): ?>
+                                    <div class="search-results">
+                                        <i class="bx bx-info-circle me-1"></i>
+                                        Found <?php echo $search_count; ?> result(s) for "<?php echo htmlspecialchars($search); ?>" 
+                                        (Total patients: <?php echo $total_patients; ?>)
+                                    </div>
+                                <?php else: ?>
+                                    <div class="search-results">
+                                        <i class="bx bx-group me-1"></i>
+                                        Total patients: <?php echo $total_patients; ?>
+                                    </div>
+                                <?php endif; ?>
+
                                 <div class="table-responsive">
                                     <table class="table table-striped table-hover">
                                         <thead>
                                             <tr>
-                                                <th>CN</th>
+                                                <th>Patient ID</th>
                                                 <th>Patient Name</th>
                                                 <th>Age</th>
                                                 <th>Gender</th>
@@ -200,14 +248,14 @@ $search_count = count($patients);
                                                         <?php if (!empty($search)): ?>
                                                             <div class="py-4">
                                                                 <i class="bx bx-search-alt-2 fs-1 text-muted"></i>
-                                                                <p class="mt-2 mb-0">ไม่พบผลการค้นหาสำหรับ "<?php echo htmlspecialchars($search); ?>"</p>
-                                                                <small class="text-muted">ลองเปลี่ยนคำค้นหาหรือ <a href="patients.php">ดูข้อมูลทั้งหมด</a></small>
+                                                                <p class="mt-2 mb-0">No search results found for "<?php echo htmlspecialchars($search); ?>"</p>
+                                                                <small class="text-muted">Try changing your search terms or <a href="patients.php">view all patients</a></small>
                                                             </div>
                                                         <?php else: ?>
                                                             <div class="py-4">
                                                                 <i class="bx bx-user-plus fs-1 text-muted"></i>
-                                                                <p class="mt-2 mb-0">ยังไม่มีข้อมูลผู้ป่วย</p>
-                                                                <small class="text-muted"><a href="patients_action.php?action=add">เพิ่มผู้ป่วยคนแรก</a></small>
+                                                                <p class="mt-2 mb-0">No patient records found</p>
+                                                                <small class="text-muted"><a href="patients_action.php?action=add">Add the first patient</a></small>
                                                             </div>
                                                         <?php endif; ?>
                                                     </td>
@@ -215,7 +263,9 @@ $search_count = count($patients);
                                             <?php else: ?>
                                                 <?php foreach ($patients as $patient): ?>
                                                     <tr>
-                                                        <td><?php echo str_pad($patient['id'], 4, '0', STR_PAD_LEFT); ?></td>
+                                                        <td>
+                                                            <strong><?php echo str_pad($patient['id'], 4, '0', STR_PAD_LEFT); ?></strong>
+                                                        </td>
                                                         <td>
                                                             <?php
                                                             $full_name = htmlspecialchars($patient['first_name'] . ' ' . $patient['last_name']);
@@ -231,16 +281,21 @@ $search_count = count($patients);
                                                         <td>
                                                             <?php
                                                             $gender_display = '';
+                                                            $gender_class = '';
                                                             if ($patient['gender'] == 'M') {
                                                                 $gender_display = 'Male';
+                                                                $gender_class = 'badge bg-primary';
                                                             } elseif ($patient['gender'] == 'F') {
                                                                 $gender_display = 'Female';
+                                                                $gender_class = 'badge bg-info';
                                                             } elseif ($patient['gender'] == 'O') {
                                                                 $gender_display = 'Other';
+                                                                $gender_class = 'badge bg-secondary';
                                                             } else {
                                                                 $gender_display = $patient['gender'];
+                                                                $gender_class = 'badge bg-light text-dark';
                                                             }
-                                                            echo htmlspecialchars($gender_display);
+                                                            echo '<span class="' . $gender_class . '">' . htmlspecialchars($gender_display) . '</span>';
                                                             ?>
                                                         </td>
                                                         <td>
@@ -253,6 +308,9 @@ $search_count = count($patients);
                                                                 echo $phone;
                                                             }
                                                             ?>
+                                                            <?php if (!empty($patient['email'])): ?>
+                                                                <br><small class="text-muted"><?php echo htmlspecialchars($patient['email']); ?></small>
+                                                            <?php endif; ?>
                                                         </td>
                                                         <td>
                                                             <div class="address-cell" title="<?php echo htmlspecialchars($patient['address']); ?>">
@@ -269,18 +327,43 @@ $search_count = count($patients);
                                                         </td>
                                                         <td>
                                                             <div class="btn-group" role="group">
-                                                                <a href="patient_view.php?id=<?php echo $patient['id']; ?>" class="btn btn-sm btn-success" title="View">
+                                                                <!-- View button - available to all users -->
+                                                                <a href="patient_view.php?id=<?php echo $patient['id']; ?>" 
+                                                                   class="btn btn-sm btn-success" 
+                                                                   title="View Patient Details">
                                                                     <i class="bx bx-show"></i>
                                                                 </a>
-                                                                <a href="patients_action.php?action=edit&id=<?php echo $patient['id']; ?>" class="btn btn-sm btn-primary" title="Edit">
+                                                                
+                                                                <!-- Edit button - available to all users now -->
+                                                                <a href="patients_action.php?action=edit&id=<?php echo $patient['id']; ?>" 
+                                                                   class="btn btn-sm btn-primary" 
+                                                                   title="Edit Patient Information">
                                                                     <i class="bx bx-edit-alt"></i>
                                                                 </a>
-                                                                <a href="../medical_records/medical_records.php?patient_id=<?php echo $patient['id']; ?>" class="btn btn-sm btn-info" title="Medical Records">
+                                                                
+                                                                <!-- Medical Records button - available to all users -->
+                                                                <a href="../medical_records/medical_records.php?patient_id=<?php echo $patient['id']; ?>" 
+                                                                   class="btn btn-sm btn-info" 
+                                                                   title="View Medical Records">
                                                                     <i class="bx bx-file"></i>
                                                                 </a>
-                                                                <a href="patients_action.php?action=delete&id=<?php echo $patient['id']; ?>" class="btn btn-sm btn-danger" title="Delete" onclick="return confirm('Are you sure you want to delete this patient?');">
-                                                                    <i class="bx bx-trash"></i>
-                                                                </a>
+                                                                
+                                                                <!-- Delete button - only for admins -->
+                                                                <?php if ($isAdmin): ?>
+                                                                    <a href="patients_action.php?action=delete&id=<?php echo $patient['id']; ?>" 
+                                                                       class="btn btn-sm btn-danger" 
+                                                                       title="Delete Patient (Admin Only)" 
+                                                                       onclick="return confirm('Are you sure you want to delete this patient? This action cannot be undone and will also delete all associated medical records.');">
+                                                                        <i class="bx bx-trash"></i>
+                                                                    </a>
+                                                                <?php else: ?>
+                                                                    <!-- Disabled delete button for regular users -->
+                                                                    <button class="btn btn-sm btn-outline-secondary" 
+                                                                            title="Delete requires admin privileges" 
+                                                                            disabled>
+                                                                        <i class="bx bx-trash"></i>
+                                                                    </button>
+                                                                <?php endif; ?>
                                                             </div>
                                                         </td>
                                                     </tr>
@@ -289,6 +372,8 @@ $search_count = count($patients);
                                         </tbody>
                                     </table>
                                 </div>
+
+                           
                             </div>
                         </div>
                     </div>
@@ -332,6 +417,12 @@ $search_count = count($patients);
             if (searchInput && !searchInput.value) {
                 searchInput.focus();
             }
+
+            // Add enhanced tooltips for action buttons
+            const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+            const tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+                return new bootstrap.Tooltip(tooltipTriggerEl);
+            });
         });
 
         // Add keyboard shortcut for search (Ctrl+F or Cmd+F)
@@ -343,6 +434,24 @@ $search_count = count($patients);
                     searchInput.focus();
                     searchInput.select();
                 }
+            }
+        });
+
+        // Enhanced search functionality
+        function performSearch() {
+            const searchValue = document.querySelector('input[name="search"]').value.trim();
+            if (searchValue) {
+                window.location.href = `patients.php?search=${encodeURIComponent(searchValue)}`;
+            } else {
+                window.location.href = 'patients.php';
+            }
+        }
+
+        // Add Enter key support for search
+        document.querySelector('input[name="search"]').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                performSearch();
             }
         });
     </script>

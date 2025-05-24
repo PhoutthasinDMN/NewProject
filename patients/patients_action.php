@@ -26,6 +26,12 @@ $patient_id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
 $error = '';
 $success = '';
 
+// ตรวจสอบสิทธิ์สำหรับการลบ - เฉพาะ admin เท่านั้น
+if ($action == 'delete' && !$isAdmin) {
+    header("Location: patients.php?error=access_denied");
+    exit;
+}
+
 // ดึงโครงสร้างตาราง patients เพื่อดูว่ามีคอลัมน์อะไรบ้าง
 $table_structure_sql = "DESCRIBE patients";
 $table_structure_result = $conn->query($table_structure_sql);
@@ -65,21 +71,45 @@ if (($action == 'edit' || $action == 'delete') && $patient_id > 0) {
     $patient = $result->fetch_assoc();
 }
 
-// การลบผู้ป่วย
-if ($action == 'delete' && $patient_id > 0) {
-    $sql = "DELETE FROM patients WHERE id = ?";
-    $stmt = $conn->prepare($sql);
-    $stmt->bind_param("i", $patient_id);
+// การลบผู้ป่วย - เฉพาะ admin เท่านั้น
+if ($action == 'delete' && $patient_id > 0 && $isAdmin) {
+    // ตรวจสอบว่ามี medical records หรือไม่
+    $check_records_sql = "SELECT COUNT(*) as count FROM medical_records WHERE patient_id = ?";
+    $check_stmt = $conn->prepare($check_records_sql);
+    $check_stmt->bind_param("i", $patient_id);
+    $check_stmt->execute();
+    $check_result = $check_stmt->get_result();
+    $records_count = $check_result->fetch_assoc()['count'];
 
-    if ($stmt->execute()) {
-        header("Location: patients.php?success=deleted");
-    } else {
-        header("Location: patients.php?error=delete_failed");
+    if ($records_count > 0) {
+        // มี medical records ให้แจ้งเตือนและขอยืนยัน
+        if (isset($_GET['confirm']) && $_GET['confirm'] == 'yes') {
+            // ลบ medical records ก่อน
+            $delete_records_sql = "DELETE FROM medical_records WHERE patient_id = ?";
+            $delete_records_stmt = $conn->prepare($delete_records_sql);
+            $delete_records_stmt->bind_param("i", $patient_id);
+            $delete_records_stmt->execute();
+        } else {
+            // แสดงหน้าขอยืนยัน
+            $action = 'confirm_delete';
+        }
     }
-    exit;
+
+    if ($action != 'confirm_delete') {
+        $sql = "DELETE FROM patients WHERE id = ?";
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param("i", $patient_id);
+
+        if ($stmt->execute()) {
+            header("Location: patients.php?success=deleted");
+        } else {
+            header("Location: patients.php?error=delete_failed");
+        }
+        exit;
+    }
 }
 
-// การบันทึกข้อมูลผู้ป่วย (เพิ่มหรือแก้ไข)
+// การบันทึกข้อมูลผู้ป่วย (เพิ่มหรือแก้ไข) - ทุกคนทำได้
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     // รับค่าจากฟอร์มเฉพาะฟิลด์ที่มีในตาราง
     $formData = [];
@@ -129,9 +159,16 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $formData['updated_at'] = date('Y-m-d H:i:s');
         }
 
+        // เพิ่มข้อมูลผู้ที่แก้ไข
+        if ($action == 'edit' && in_array('updated_by', $table_columns)) {
+            $formData['updated_by'] = $user_id;
+        } elseif ($action != 'edit' && in_array('created_by', $table_columns)) {
+            $formData['created_by'] = $user_id;
+        }
+
         // สร้างคำสั่ง SQL ตามการกระทำ
         if ($action == 'edit' && $patient_id > 0) {
-            // อัปเดตข้อมูลผู้ป่วย
+            // อัปเดตข้อมูลผู้ป่วย - ทุกคนทำได้
             $setClause = [];
             foreach ($formData as $key => $value) {
                 $setClause[] = "$key = ?";
@@ -154,7 +191,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             array_unshift($refs, $stmt, $paramTypes);
             call_user_func_array('mysqli_stmt_bind_param', $refs);
         } else {
-            // เพิ่มผู้ป่วยใหม่
+            // เพิ่มผู้ป่วยใหม่ - ทุกคนทำได้
             $columns = array_keys($formData);
             $placeholders = array_fill(0, count($columns), '?');
 
@@ -175,7 +212,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         }
 
         if ($stmt->execute()) {
-            $success = alert(($action == 'edit' ? "อัปเดตข้อมูลผู้ป่วยเรียบร้อยแล้ว" : "เพิ่มผู้ป่วยเรียบร้อยแล้ว"), "success");
+            $action_text = ($action == 'edit') ? "Patient information has been successfully updated." : "Patient added successfully";
+            $success = alert($action_text, "success");
 
             if ($action != 'edit') {
                 // ล้างข้อมูลในฟอร์มหลังจากเพิ่มผู้ป่วยสำเร็จ
@@ -185,14 +223,19 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 }
             }
         } else {
-            $error = alert("เกิดข้อผิดพลาด: " . $stmt->error, "danger");
+            $error = alert("An error occurred.: " . $stmt->error, "danger");
         }
     }
 }
 
 // หัวข้อและชื่อปุ่มตามการกระทำ
-$page_title = ($action == 'edit') ? 'Edit Patient' : 'Add New Patient';
-$button_text = ($action == 'edit') ? 'Update Patient' : 'Add Patient';
+if ($action == 'confirm_delete') {
+    $page_title = 'Confirm Delete Patient';
+    $button_text = '';
+} else {
+    $page_title = ($action == 'edit') ? 'Edit Patient' : 'Add New Patient';
+    $button_text = ($action == 'edit') ? 'Update Patient' : 'Add Patient';
+}
 ?>
 <!DOCTYPE html>
 <html
@@ -209,7 +252,7 @@ $button_text = ($action == 'edit') ? 'Update Patient' : 'Add Patient';
         name="viewport"
         content="width=device-width, initial-scale=1.0, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0" />
 
-    <title><?php echo $page_title; ?> | Sneat</title>
+    <title><?php echo $page_title; ?> | Onemeds</title>
 
     <meta name="description" content="" />
 
@@ -235,6 +278,46 @@ $button_text = ($action == 'edit') ? 'Update Patient' : 'Add Patient';
     <link rel="stylesheet" href="../assets/vendor/libs/perfect-scrollbar/perfect-scrollbar.css" />
 
     <!-- Page CSS -->
+    <style>
+        .user-role-indicator {
+            background: linear-gradient(135deg, #28a745, #20c997);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 25px;
+            font-size: 12px;
+            font-weight: 600;
+            display: inline-block;
+            margin-left: 10px;
+        }
+
+        .admin-role-indicator {
+            background: linear-gradient(135deg, #007bff, #0056b3);
+        }
+
+        .permission-info {
+            background: #f8f9fa;
+            border-left: 4px solid #28a745;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 4px;
+        }
+
+        .admin-permission-info {
+            border-left-color: #007bff;
+        }
+
+        .confirm-delete-card {
+            border: 2px solid #dc3545;
+            background: #fff5f5;
+        }
+
+        .patient-info-card {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+    </style>
 
     <!-- Helpers -->
     <script src="../assets/vendor/js/helpers.js"></script>
@@ -260,199 +343,263 @@ $button_text = ($action == 'edit') ? 'Update Patient' : 'Add Patient';
                     <div class="container-xxl flex-grow-1 container-p-y">
                         <h4 class="fw-bold py-3 mb-4">
                             <span class="text-muted fw-light">Patients /</span> <?php echo $page_title; ?>
+                            <span class="user-role-indicator <?php echo $isAdmin ? 'admin-role-indicator' : ''; ?>">
+                                <?php echo $isAdmin ? 'Admin Access' : 'User Access'; ?>
+                            </span>
                         </h4>
 
-                        <div class="row">
-                            <div class="col-md-12">
-                                <div class="card mb-4">
-                                    <h5 class="card-header"><?php echo $page_title; ?></h5>
-
-                                    <!-- Alerts -->
-                                    <?php if (!empty($error)): ?>
-                                        <?php echo $error; ?>
-                                    <?php endif; ?>
-
-                                    <?php if (!empty($success)): ?>
-                                        <?php echo $success; ?>
-                                    <?php endif; ?>
-
-                                    <div class="card-body">
-                                        <form method="POST" action="<?php echo htmlspecialchars($_SERVER["PHP_SELF"] . '?action=' . $action . ($patient_id > 0 ? '&id=' . $patient_id : '')); ?>">
-                                            <div class="row">
-                                                <div class="mb-3 col-md-6">
-                                                    <label for="first_name" class="form-label">First Name</label>
-                                                    <input
-                                                        class="form-control"
-                                                        type="text"
-                                                        id="first_name"
-                                                        name="first_name"
-                                                        value="<?php echo isset($patient['first_name']) ? htmlspecialchars($patient['first_name']) : ''; ?>"
-                                                        required />
-                                                </div>
-                                                <div class="mb-3 col-md-6">
-                                                    <label for="last_name" class="form-label">Last Name</label>
-                                                    <input class="form-control"
-                                                        type="text"
-                                                        id="last_name"
-                                                        name="last_name"
-                                                        value="<?php echo isset($patient['last_name']) ? htmlspecialchars($patient['last_name']) : ''; ?>"
-                                                        required />
+                        <?php if ($action == 'confirm_delete'): ?>
+                            <!-- Confirm Delete Section -->
+                            <div class="row">
+                                <div class="col-md-12">
+                                    <div class="card mb-4 confirm-delete-card">
+                                        <h5 class="card-header text-danger">
+                                            <i class="bx bx-warning me-2"></i>
+                                            Confirm Patient Deletion
+                                        </h5>
+                                        <div class="card-body">
+                                            <div class="patient-info-card">
+                                                <h6 class="mb-3">Patient Information:</h6>
+                                                <div class="row">
+                                                    <div class="col-md-6">
+                                                        <p><strong>Name:</strong> <?php echo htmlspecialchars($patient['first_name'] . ' ' . $patient['last_name']); ?></p>
+                                                        <p><strong>Age:</strong> <?php echo htmlspecialchars($patient['age']); ?></p>
+                                                        <p><strong>Phone:</strong> <?php echo htmlspecialchars($patient['phone']); ?></p>
+                                                    </div>
+                                                    <div class="col-md-6">
+                                                        <p><strong>Email:</strong> <?php echo htmlspecialchars($patient['email']); ?></p>
+                                                        <p><strong>Patient ID:</strong> <?php echo str_pad($patient['id'], 4, '0', STR_PAD_LEFT); ?></p>
+                                                    </div>
                                                 </div>
                                             </div>
 
-                                            <div class="row">
-                                                <div class="mb-3 col-md-3">
-                                                    <label for="age" class="form-label">Age</label>
-                                                    <input
-                                                        class="form-control"
-                                                        type="number"
-                                                        id="age"
-                                                        name="age"
-                                                        min="1"
-                                                        max="150"
-                                                        value="<?php echo isset($patient['age']) ? htmlspecialchars($patient['age']) : ''; ?>" />
-                                                </div>
-                                                <div class="mb-3 col-md-6">
-                                                    <label for="dob" class="form-label">Date of Birth</label>
-                                                    <input
-                                                        class="form-control"
-                                                        type="date"
-                                                        id="dob"
-                                                        name="dob"
-                                                        value="<?php
-                                                                if (isset($patient['dob']) && !empty($patient['dob']) && $patient['dob'] != '0000-00-00') {
-                                                                    $date_obj = date_create($patient['dob']);
-                                                                    if ($date_obj) {
-                                                                        echo date_format($date_obj, 'Y-m-d');
-                                                                    }
-                                                                }
-                                                                ?>" />
-                                                    <small class="text-muted">Format: YYYY-MM-DD</small>
-                                                </div>
-                                                <div class="mb-3 col-md-3">
-                                                    <label for="gender" class="form-label">Gender</label>
-                                                    <select id="gender" name="gender" class="form-select">
-                                                        <option value="">Select Gender</option>
-                                                        <option value="M" <?php echo (isset($patient['gender']) && $patient['gender'] == 'M') ? 'selected' : ''; ?>>Male</option>
-                                                        <option value="F" <?php echo (isset($patient['gender']) && $patient['gender'] == 'F') ? 'selected' : ''; ?>>Female</option>
-                                                        <option value="O" <?php echo (isset($patient['gender']) && $patient['gender'] == 'O') ? 'selected' : ''; ?>>Other</option>
-                                                    </select>
-                                                </div>
+                                            <div class="alert alert-danger">
+                                                <h6 class="mb-2">
+                                                    <i class="bx bx-error-circle me-1"></i>
+                                                    Warning: This action cannot be undone!
+                                                </h6>
+                                                <p class="mb-2">This patient has <?php echo $records_count; ?> medical record(s) associated with them.</p>
+                                                <p class="mb-0">Deleting this patient will also permanently delete all their medical records.</p>
                                             </div>
 
-                                            <div class="mb-3">
-                                                <label for="address" class="form-label">Address</label>
-                                                <textarea
-                                                    class="form-control"
-                                                    id="address"
-                                                    name="address"
-                                                    rows="3"><?php echo isset($patient['address']) ? htmlspecialchars($patient['address']) : ''; ?></textarea>
+                                            <div class="text-center">
+                                                <a href="patients_action.php?action=delete&id=<?php echo $patient_id; ?>&confirm=yes" 
+                                                   class="btn btn-danger me-3">
+                                                    <i class="bx bx-trash me-1"></i>
+                                                    Yes, Delete Patient and All Records
+                                                </a>
+                                                <a href="patients.php" class="btn btn-secondary">
+                                                    <i class="bx bx-x me-1"></i>
+                                                    Cancel
+                                                </a>
                                             </div>
-
-                                            <div class="row">
-                                                <div class="mb-3 col-md-6">
-                                                    <label for="phone" class="form-label">Phone</label>
-                                                    <input
-                                                        class="form-control"
-                                                        type="text"
-                                                        id="phone"
-                                                        name="phone"
-                                                        value="<?php echo isset($patient['phone']) ? htmlspecialchars($patient['phone']) : ''; ?>" />
-                                                </div>
-                                                <div class="mb-3 col-md-6">
-                                                    <label for="email" class="form-label">Email</label>
-                                                    <input
-                                                        class="form-control"
-                                                        type="email"
-                                                        id="email"
-                                                        name="email"
-                                                        value="<?php echo isset($patient['email']) ? htmlspecialchars($patient['email']) : ''; ?>" />
-                                                </div>
-                                            </div>
-
-                                            <div class="row">
-                                                <div class="mb-3 col-md-6">
-                                                    <label for="nationality" class="form-label">Nationality</label>
-                                                    <input
-                                                        class="form-control"
-                                                        type="text"
-                                                        id="nationality"
-                                                        name="nationality"
-                                                        value="<?php echo isset($patient['nationality']) ? htmlspecialchars($patient['nationality']) : ''; ?>" />
-                                                </div>
-                                                <div class="mb-3 col-md-6">
-                                                    <label for="religion" class="form-label">Religion</label>
-                                                    <input
-                                                        class="form-control"
-                                                        type="text"
-                                                        id="religion"
-                                                        name="religion"
-                                                        value="<?php echo isset($patient['religion']) ? htmlspecialchars($patient['religion']) : ''; ?>" />
-                                                </div>
-                                            </div>
-
-                                            <div class="row">
-                                                <div class="mb-3 col-md-6">
-                                                    <label for="marital_status" class="form-label">Marital Status</label>
-                                                    <select id="marital_status" name="marital_status" class="form-select">
-                                                        <option value="">Select Marital Status</option>
-                                                        <option value="Single" <?php echo (isset($patient['marital_status']) && $patient['marital_status'] == 'Single') ? 'selected' : ''; ?>>Single</option>
-                                                        <option value="Married" <?php echo (isset($patient['marital_status']) && $patient['marital_status'] == 'Married') ? 'selected' : ''; ?>>Married</option>
-                                                        <option value="Divorced" <?php echo (isset($patient['marital_status']) && $patient['marital_status'] == 'Divorced') ? 'selected' : ''; ?>>Divorced</option>
-                                                        <option value="Widowed" <?php echo (isset($patient['marital_status']) && $patient['marital_status'] == 'Widowed') ? 'selected' : ''; ?>>Widowed</option>
-                                                    </select>
-                                                </div>
-                                                <div class="mb-3 col-md-6">
-                                                    <label for="occupation" class="form-label">Occupation</label>
-                                                    <input
-                                                        class="form-control"
-                                                        type="text"
-                                                        id="occupation"
-                                                        name="occupation"
-                                                        value="<?php echo isset($patient['occupation']) ? htmlspecialchars($patient['occupation']) : ''; ?>" />
-                                                </div>
-                                            </div>
-
-                                            <div class="row">
-                                                <div class="mb-3 col-md-6">
-                                                    <label for="emergency_contact_name" class="form-label">Emergency Contact Name</label>
-                                                    <input
-                                                        class="form-control"
-                                                        type="text"
-                                                        id="emergency_contact_name"
-                                                        name="emergency_contact_name"
-                                                        value="<?php echo isset($patient['emergency_contact_name']) ? htmlspecialchars($patient['emergency_contact_name']) : ''; ?>" />
-                                                </div>
-                                                <div class="mb-3 col-md-6">
-                                                    <label for="emergency_contact_relationship" class="form-label">Relationship</label>
-                                                    <input
-                                                        class="form-control"
-                                                        type="text"
-                                                        id="emergency_contact_relationship"
-                                                        name="emergency_contact_relationship"
-                                                        value="<?php echo isset($patient['emergency_contact_relationship']) ? htmlspecialchars($patient['emergency_contact_relationship']) : ''; ?>" />
-                                                </div>
-                                            </div>
-
-                                            <div class="mb-3">
-                                                <label for="emergency_contact_phone" class="form-label">Emergency Contact Phone</label>
-                                                <input
-                                                    class="form-control"
-                                                    type="text"
-                                                    id="emergency_contact_phone"
-                                                    name="emergency_contact_phone"
-                                                    value="<?php echo isset($patient['emergency_contact_phone']) ? htmlspecialchars($patient['emergency_contact_phone']) : ''; ?>" />
-                                            </div>
-
-                                            <div class="mt-2">
-                                                <button type="submit" class="btn btn-primary me-2"><?php echo $button_text; ?></button>
-                                                <a href="patients.php" class="btn btn-outline-secondary">Cancel</a>
-                                            </div>
-                                        </form>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
-                        </div>
+                        <?php else: ?>
+                            <!-- Add/Edit Form Section -->
+                            <div class="row">
+                                <div class="col-md-12">
+                                    <div class="card mb-4">
+                                        <h5 class="card-header"><?php echo $page_title; ?></h5>
+
+                                        <!-- Alerts -->
+                                        <?php if (!empty($error)): ?>
+                                            <?php echo $error; ?>
+                                        <?php endif; ?>
+
+                                        <?php if (!empty($success)): ?>
+                                            <?php echo $success; ?>
+                                        <?php endif; ?>
+
+                                        <div class="card-body">
+                                            <form method="POST" action="<?php echo htmlspecialchars($_SERVER["PHP_SELF"] . '?action=' . $action . ($patient_id > 0 ? '&id=' . $patient_id : '')); ?>">
+                                                <div class="row">
+                                                    <div class="mb-3 col-md-6">
+                                                        <label for="first_name" class="form-label">First Name *</label>
+                                                        <input
+                                                            class="form-control"
+                                                            type="text"
+                                                            id="first_name"
+                                                            name="first_name"
+                                                            value="<?php echo isset($patient['first_name']) ? htmlspecialchars($patient['first_name']) : ''; ?>"
+                                                            required />
+                                                    </div>
+                                                    <div class="mb-3 col-md-6">
+                                                        <label for="last_name" class="form-label">Last Name *</label>
+                                                        <input class="form-control"
+                                                            type="text"
+                                                            id="last_name"
+                                                            name="last_name"
+                                                            value="<?php echo isset($patient['last_name']) ? htmlspecialchars($patient['last_name']) : ''; ?>"
+                                                            required />
+                                                    </div>
+                                                </div>
+
+                                                <div class="row">
+                                                    <div class="mb-3 col-md-3">
+                                                        <label for="age" class="form-label">Age</label>
+                                                        <input
+                                                            class="form-control"
+                                                            type="number"
+                                                            id="age"
+                                                            name="age"
+                                                            min="1"
+                                                            max="150"
+                                                            value="<?php echo isset($patient['age']) ? htmlspecialchars($patient['age']) : ''; ?>" />
+                                                    </div>
+                                                    <div class="mb-3 col-md-6">
+                                                        <label for="dob" class="form-label">Date of Birth</label>
+                                                        <input
+                                                            class="form-control"
+                                                            type="date"
+                                                            id="dob"
+                                                            name="dob"
+                                                            value="<?php
+                                                                    if (isset($patient['dob']) && !empty($patient['dob']) && $patient['dob'] != '0000-00-00') {
+                                                                        $date_obj = date_create($patient['dob']);
+                                                                        if ($date_obj) {
+                                                                            echo date_format($date_obj, 'Y-m-d');
+                                                                        }
+                                                                    }
+                                                                    ?>" />
+                                                        <small class="text-muted">Format: YYYY-MM-DD</small>
+                                                    </div>
+                                                    <div class="mb-3 col-md-3">
+                                                        <label for="gender" class="form-label">Gender</label>
+                                                        <select id="gender" name="gender" class="form-select">
+                                                            <option value="">Select Gender</option>
+                                                            <option value="M" <?php echo (isset($patient['gender']) && $patient['gender'] == 'M') ? 'selected' : ''; ?>>Male</option>
+                                                            <option value="F" <?php echo (isset($patient['gender']) && $patient['gender'] == 'F') ? 'selected' : ''; ?>>Female</option>
+                                                            <option value="O" <?php echo (isset($patient['gender']) && $patient['gender'] == 'O') ? 'selected' : ''; ?>>Other</option>
+                                                        </select>
+                                                    </div>
+                                                </div>
+
+                                                <div class="mb-3">
+                                                    <label for="address" class="form-label">Address</label>
+                                                    <textarea
+                                                        class="form-control"
+                                                        id="address"
+                                                        name="address"
+                                                        rows="3"><?php echo isset($patient['address']) ? htmlspecialchars($patient['address']) : ''; ?></textarea>
+                                                </div>
+
+                                                <div class="row">
+                                                    <div class="mb-3 col-md-6">
+                                                        <label for="phone" class="form-label">Phone</label>
+                                                        <input
+                                                            class="form-control"
+                                                            type="text"
+                                                            id="phone"
+                                                            name="phone"
+                                                            value="<?php echo isset($patient['phone']) ? htmlspecialchars($patient['phone']) : ''; ?>" />
+                                                    </div>
+                                                    <div class="mb-3 col-md-6">
+                                                        <label for="email" class="form-label">Email</label>
+                                                        <input
+                                                            class="form-control"
+                                                            type="email"
+                                                            id="email"
+                                                            name="email"
+                                                            value="<?php echo isset($patient['email']) ? htmlspecialchars($patient['email']) : ''; ?>" />
+                                                    </div>
+                                                </div>
+
+                                                <div class="row">
+                                                    <div class="mb-3 col-md-6">
+                                                        <label for="nationality" class="form-label">Nationality</label>
+                                                        <input
+                                                            class="form-control"
+                                                            type="text"
+                                                            id="nationality"
+                                                            name="nationality"
+                                                            value="<?php echo isset($patient['nationality']) ? htmlspecialchars($patient['nationality']) : ''; ?>" />
+                                                    </div>
+                                                    <div class="mb-3 col-md-6">
+                                                        <label for="religion" class="form-label">Religion</label>
+                                                        <input
+                                                            class="form-control"
+                                                            type="text"
+                                                            id="religion"
+                                                            name="religion"
+                                                            value="<?php echo isset($patient['religion']) ? htmlspecialchars($patient['religion']) : ''; ?>" />
+                                                    </div>
+                                                </div>
+
+                                                <div class="row">
+                                                    <div class="mb-3 col-md-6">
+                                                        <label for="marital_status" class="form-label">Marital Status</label>
+                                                        <select id="marital_status" name="marital_status" class="form-select">
+                                                            <option value="">Select Marital Status</option>
+                                                            <option value="Single" <?php echo (isset($patient['marital_status']) && $patient['marital_status'] == 'Single') ? 'selected' : ''; ?>>Single</option>
+                                                            <option value="Married" <?php echo (isset($patient['marital_status']) && $patient['marital_status'] == 'Married') ? 'selected' : ''; ?>>Married</option>
+                                                            <option value="Divorced" <?php echo (isset($patient['marital_status']) && $patient['marital_status'] == 'Divorced') ? 'selected' : ''; ?>>Divorced</option>
+                                                            <option value="Widowed" <?php echo (isset($patient['marital_status']) && $patient['marital_status'] == 'Widowed') ? 'selected' : ''; ?>>Widowed</option>
+                                                        </select>
+                                                    </div>
+                                                    <div class="mb-3 col-md-6">
+                                                        <label for="occupation" class="form-label">Occupation</label>
+                                                        <input
+                                                            class="form-control"
+                                                            type="text"
+                                                            id="occupation"
+                                                            name="occupation"
+                                                            value="<?php echo isset($patient['occupation']) ? htmlspecialchars($patient['occupation']) : ''; ?>" />
+                                                    </div>
+                                                </div>
+
+                                                <hr class="my-4">
+                                                <h6 class="mb-3">Emergency Contact Information</h6>
+
+                                                <div class="row">
+                                                    <div class="mb-3 col-md-6">
+                                                        <label for="emergency_contact_name" class="form-label">Emergency Contact Name</label>
+                                                        <input
+                                                            class="form-control"
+                                                            type="text"
+                                                            id="emergency_contact_name"
+                                                            name="emergency_contact_name"
+                                                            value="<?php echo isset($patient['emergency_contact_name']) ? htmlspecialchars($patient['emergency_contact_name']) : ''; ?>" />
+                                                    </div>
+                                                    <div class="mb-3 col-md-6">
+                                                        <label for="emergency_contact_relationship" class="form-label">Relationship</label>
+                                                        <input
+                                                            class="form-control"
+                                                            type="text"
+                                                            id="emergency_contact_relationship"
+                                                            name="emergency_contact_relationship"
+                                                            value="<?php echo isset($patient['emergency_contact_relationship']) ? htmlspecialchars($patient['emergency_contact_relationship']) : ''; ?>" />
+                                                    </div>
+                                                </div>
+
+                                                <div class="mb-3">
+                                                    <label for="emergency_contact_phone" class="form-label">Emergency Contact Phone</label>
+                                                    <input
+                                                        class="form-control"
+                                                        type="text"
+                                                        id="emergency_contact_phone"
+                                                        name="emergency_contact_phone"
+                                                        value="<?php echo isset($patient['emergency_contact_phone']) ? htmlspecialchars($patient['emergency_contact_phone']) : ''; ?>" />
+                                                </div>
+
+                                                <div class="mt-4">
+                                                    <button type="submit" class="btn btn-primary me-2">
+                                                        <i class="bx bx-check me-1"></i>
+                                                        <?php echo $button_text; ?>
+                                                    </button>
+                                                    <a href="patients.php" class="btn btn-outline-secondary">
+                                                        <i class="bx bx-x me-1"></i>
+                                                        Cancel
+                                                    </a>
+                                                </div>
+                                            </form>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        <?php endif; ?>
                     </div>
                     <!-- / Content -->
 
@@ -486,6 +633,47 @@ $button_text = ($action == 'edit') ? 'Update Patient' : 'Add Patient';
 
     <!-- Main JS -->
     <script src="../assets/js/main.js"></script>
+
+    <script>
+        // Auto focus on first name field when adding new patient
+        document.addEventListener('DOMContentLoaded', function() {
+            const firstNameInput = document.getElementById('first_name');
+            if (firstNameInput && '<?php echo $action; ?>' === 'add') {
+                firstNameInput.focus();
+            }
+        });
+
+        // Form validation
+        document.querySelector('form').addEventListener('submit', function(e) {
+            const firstName = document.getElementById('first_name').value.trim();
+            const lastName = document.getElementById('last_name').value.trim();
+            
+            if (!firstName || !lastName) {
+                e.preventDefault();
+                alert('Please fill in both first name and last name.');
+                return false;
+            }
+        });
+
+        // Calculate age from date of birth
+        document.getElementById('dob').addEventListener('change', function() {
+            const dobValue = this.value;
+            if (dobValue) {
+                const dob = new Date(dobValue);
+                const today = new Date();
+                let age = today.getFullYear() - dob.getFullYear();
+                const monthDiff = today.getMonth() - dob.getMonth();
+                
+                if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < dob.getDate())) {
+                    age--;
+                }
+                
+                if (age >= 0 && age <= 150) {
+                    document.getElementById('age').value = age;
+                }
+            }
+        });
+    </script>
 </body>
 
 </html>

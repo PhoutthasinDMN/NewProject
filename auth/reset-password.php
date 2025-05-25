@@ -215,7 +215,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 </form>
               <?php else: ?>
                 <div class="alert alert-danger" role="alert">
-                  ลิงก์รีเซ็ตรหัสผ่านไม่ถูกต้องหรือหมดอายุแล้ว กรุณาขอรีเซ็ตรหัสผ่านใหม่
+                  The password reset link is invalid or expired. Please request a new password reset.
                 </div>
                 <div class="text-center mt-4">
                   <a href="forgot-password.php" class="btn btn-primary">Request New Reset Link</a>

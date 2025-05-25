@@ -50,7 +50,7 @@ $appointments_sql = "
         p.age,
         CASE 
             WHEN mr.next_appointment < NOW() THEN 'overdue'
-            WHEN mr.next_appointment < DATE_ADD(NOW(), INTERVAL 1 DAY) THEN 'today'
+            WHEN DATE(mr.next_appointment) = CURDATE() THEN 'today'
             WHEN mr.next_appointment < DATE_ADD(NOW(), INTERVAL 7 DAY) THEN 'upcoming'
             ELSE 'scheduled'
         END as status

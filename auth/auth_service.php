@@ -19,7 +19,7 @@ function loginUser($email_username, $password, $remember = false) {
     
     // ตรวจสอบว่าข้อมูลถูกกรอกหรือไม่
     if (empty($email_username) || empty($password)) {
-        return ['success' => false, 'message' => 'กรุณากรอกอีเมล/ชื่อผู้ใช้และรหัสผ่าน'];
+        return ['success' => false, 'message' => 'Please enter your email/username and password.'];
     }
     
     // ตรวจสอบว่าเป็นอีเมลหรือชื่อผู้ใช้
@@ -54,14 +54,14 @@ function loginUser($email_username, $password, $remember = false) {
                 $stmt->execute();
             }
             
-            return ['success' => true, 'message' => 'ล็อกอินสำเร็จ'];
+            return ['success' => true, 'message' => 'Login successful'];
         } else {
             // รหัสผ่านไม่ถูกต้อง
-            return ['success' => false, 'message' => 'อีเมล/ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง'];
+            return ['success' => false, 'message' => 'Incorrect email/username or password.'];
         }
     } else {
         // ไม่พบผู้ใช้
-        return ['success' => false, 'message' => 'อีเมล/ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง'];
+        return ['success' => false, 'message' => 'Incorrect email/username or password.'];
     }
 }
 
@@ -79,13 +79,13 @@ function registerUser($username, $email, $password, $terms) {
     
     // ตรวจสอบข้อมูลที่กรอก
     if (empty($username) || empty($email) || empty($password)) {
-        return ['success' => false, 'message' => 'กรุณากรอกข้อมูลให้ครบทุกช่อง'];
+        return ['success' => false, 'message' => 'Please fill out all fields.'];
     } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-        return ['success' => false, 'message' => 'รูปแบบอีเมลไม่ถูกต้อง'];
+        return ['success' => false, 'message' => 'Invalid email format'];
     } elseif (strlen($password) < 8) {
-        return ['success' => false, 'message' => 'รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร'];
+        return ['success' => false, 'message' => 'Password must be at least 8 characters.'];
     } elseif ($terms != 1) {
-        return ['success' => false, 'message' => 'กรุณายอมรับเงื่อนไขและข้อตกลง'];
+        return ['success' => false, 'message' => 'Please accept the terms and conditions.'];
     }
     
     // ตรวจสอบว่าชื่อผู้ใช้หรืออีเมลซ้ำหรือไม่
@@ -96,7 +96,7 @@ function registerUser($username, $email, $password, $terms) {
     $result = $stmt->get_result();
     
     if ($result->num_rows > 0) {
-        return ['success' => false, 'message' => 'ชื่อผู้ใช้หรืออีเมลนี้มีในระบบแล้ว'];
+        return ['success' => false, 'message' => 'This username or email already exists in the system.'];
     }
     
     // เข้ารหัสรหัสผ่าน
@@ -108,9 +108,9 @@ function registerUser($username, $email, $password, $terms) {
     $stmt->bind_param("sss", $username, $email, $hashed_password);
     
     if ($stmt->execute()) {
-        return ['success' => true, 'message' => 'ลงทะเบียนสำเร็จ! กรุณาเข้าสู่ระบบ'];
+        return ['success' => true, 'message' => 'Successfully registered! Please log in'];
     } else {
-        return ['success' => false, 'message' => 'เกิดข้อผิดพลาดในการลงทะเบียน: ' . $stmt->error];
+        return ['success' => false, 'message' => 'An error occurred during registration.: ' . $stmt->error];
     }
 }
 
@@ -125,9 +125,9 @@ function sendPasswordResetLink($email) {
     
     // ตรวจสอบว่าอีเมลถูกต้องหรือไม่
     if (empty($email)) {
-        return ['success' => false, 'message' => 'กรุณากรอกอีเมล'];
+        return ['success' => false, 'message' => 'Please enter email'];
     } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-        return ['success' => false, 'message' => 'รูปแบบอีเมลไม่ถูกต้อง'];
+        return ['success' => false, 'message' => 'Invalid email format'];
     }
     
     // ตรวจสอบว่ามีอีเมลนี้ในระบบหรือไม่
@@ -138,7 +138,7 @@ function sendPasswordResetLink($email) {
     $result = $stmt->get_result();
     
     if ($result->num_rows == 0) {
-        return ['success' => false, 'message' => 'ไม่พบอีเมลนี้ในระบบ'];
+        return ['success' => false, 'message' => 'This email address was not found in the system.'];
     }
     
     // สร้าง token สำหรับรีเซ็ตรหัสผ่าน
@@ -153,12 +153,12 @@ function sendPasswordResetLink($email) {
     if ($stmt->execute()) {
         // ส่งอีเมลรีเซ็ตรหัสผ่าน
         if (sendResetEmail($email, $token)) {
-            return ['success' => true, 'message' => 'ส่งลิงก์รีเซ็ตรหัสผ่านไปยังอีเมลของคุณแล้ว'];
+            return ['success' => true, 'message' => 'A password reset link has been sent to your email.'];
         } else {
-            return ['success' => false, 'message' => 'ไม่สามารถส่งอีเมลได้ กรุณาลองอีกครั้ง'];
+            return ['success' => false, 'message' => 'Unable to send email Please try again.'];
         }
     } else {
-        return ['success' => false, 'message' => 'เกิดข้อผิดพลาดในการดำเนินการ กรุณาลองอีกครั้ง'];
+        return ['success' => false, 'message' => 'An error occurred while processing. Please try again.'];
     }
 }
 
@@ -175,11 +175,11 @@ function resetPassword($token, $password, $confirm_password) {
     
     // ตรวจสอบว่ารหัสผ่านถูกกรอกครบถ้วนหรือไม่
     if (empty($password) || empty($confirm_password)) {
-        return ['success' => false, 'message' => 'กรุณากรอกรหัสผ่านให้ครบถ้วน'];
+        return ['success' => false, 'message' => 'Please fill in your password completely.'];
     } elseif (strlen($password) < 8) {
-        return ['success' => false, 'message' => 'รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร'];
+        return ['success' => false, 'message' => 'Password must be at least 8 characters.'];
     } elseif ($password !== $confirm_password) {
-        return ['success' => false, 'message' => 'รหัสผ่านไม่ตรงกัน'];
+        return ['success' => false, 'message' => 'Passwords do not match'];
     }
     
     // ตรวจสอบว่า token ถูกต้องและยังไม่หมดอายุหรือไม่
@@ -190,7 +190,7 @@ function resetPassword($token, $password, $confirm_password) {
     $result = $stmt->get_result();
     
     if ($result->num_rows == 0) {
-        return ['success' => false, 'message' => 'Token ไม่ถูกต้องหรือหมดอายุแล้ว'];
+        return ['success' => false, 'message' => 'Token Invalid or expired'];
     }
     
     $user = $result->fetch_assoc();
@@ -204,9 +204,9 @@ function resetPassword($token, $password, $confirm_password) {
     $stmt->bind_param("si", $hashed_password, $user['id']);
     
     if ($stmt->execute()) {
-        return ['success' => true, 'message' => 'รีเซ็ตรหัสผ่านสำเร็จ! กรุณาเข้าสู่ระบบด้วยรหัสผ่านใหม่'];
+        return ['success' => true, 'message' => 'Password reset successful! Please log in with a new password.'];
     } else {
-        return ['success' => false, 'message' => 'เกิดข้อผิดพลาดในการรีเซ็ตรหัสผ่าน กรุณาลองอีกครั้ง'];
+        return ['success' => false, 'message' => 'There was an error resetting your password. Please try again.'];
     }
 }
 

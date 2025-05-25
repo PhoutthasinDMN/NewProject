@@ -48,7 +48,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
       content="width=device-width, initial-scale=1.0, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0"
     />
 
-    <title>Login | Sneat - Bootstrap 5 HTML Admin Template</title>
+    <title>Login</title>
 
     <meta name="description" content="" />
 

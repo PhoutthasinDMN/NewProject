@@ -2,658 +2,575 @@
 require_once '../includes/config.php';
 require_once '../includes/db.php';
 require_once '../includes/functions.php';
+require_once '../includes/patient_functions.php';
 
-// บังคับให้ล็อกอินก่อนเข้าใช้งาน
 requireLogin();
 
-// ดึงข้อมูลผู้ใช้
+// Get user info
 $user_id = $_SESSION['user_id'];
-$sql = "SELECT username, email, role FROM users WHERE id = ?";
-$stmt = $conn->prepare($sql);
-$stmt->bind_param("i", $user_id);
-$stmt->execute();
-$result = $stmt->get_result();
-$user = $result->fetch_assoc();
-
-// ตรวจสอบว่าผู้ใช้เป็น admin หรือไม่
+$user = getUserInfo($user_id, $conn);
 $isAdmin = ($user['role'] == 'admin');
 
-// ตรวจสอบการกระทำที่ต้องการ (add, edit, delete)
-$action = isset($_GET['action']) ? $_GET['action'] : '';
-$patient_id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
+// Get action and patient ID
+$action = $_GET['action'] ?? '';
+$patient_id = (int)($_GET['id'] ?? 0);
 
-// ข้อความแจ้งเตือน
+// Messages
 $error = '';
 $success = '';
 
-// ตรวจสอบสิทธิ์สำหรับการลบ - เฉพาะ admin เท่านั้น
+// Check permissions for delete action
 if ($action == 'delete' && !$isAdmin) {
-    header("Location: patients.php?error=access_denied");
-    exit;
+    redirect('patients.php', 'Access denied - Admin privileges required', 'error');
 }
 
-// ดึงโครงสร้างตาราง patients เพื่อดูว่ามีคอลัมน์อะไรบ้าง
-$table_structure_sql = "DESCRIBE patients";
-$table_structure_result = $conn->query($table_structure_sql);
-$table_columns = [];
-$column_types = []; // เก็บข้อมูลประเภทของคอลัมน์
+// Initialize patient data
+$patient = [];
 
-if ($table_structure_result && $table_structure_result->num_rows > 0) {
-    while ($col = $table_structure_result->fetch_assoc()) {
-        $table_columns[] = $col['Field'];
-        $column_types[$col['Field']] = $col['Type']; // เก็บประเภทของคอลัมน์
+// Load patient data for edit/delete actions
+if (in_array($action, ['edit', 'delete']) && $patient_id > 0) {
+    $patient = getPatientById($conn, $patient_id);
+    if (!$patient) {
+        redirect('patients.php', 'Patient not found', 'error');
     }
-} else {
-    $error = alert("ไม่สามารถดึงโครงสร้างตารางได้", "danger");
 }
 
-// ตัวแปรสำหรับเก็บข้อมูลผู้ป่วย - ใช้คอลัมน์จากตารางจริง
-$patient = array_fill_keys($table_columns, '');
-// ลบคอลัมน์ id ออกจากการตั้งค่าเริ่มต้น
-if (isset($patient['id'])) {
-    unset($patient['id']);
-}
-
-// ถ้าเป็นการแก้ไขหรือลบ ให้ดึงข้อมูลผู้ป่วยก่อน
-if (($action == 'edit' || $action == 'delete') && $patient_id > 0) {
-    $sql = "SELECT * FROM patients WHERE id = ?";
-    $stmt = $conn->prepare($sql);
+// Handle delete action
+if ($action == 'delete' && $patient_id > 0 && $isAdmin) {
+    // Check for medical records
+    $stmt = $conn->prepare("SELECT COUNT(*) as count FROM medical_records WHERE patient_id = ?");
     $stmt->bind_param("i", $patient_id);
     $stmt->execute();
-    $result = $stmt->get_result();
+    $records_count = $stmt->get_result()->fetch_assoc()['count'];
 
-    if ($result->num_rows == 0) {
-        // ถ้าไม่พบผู้ป่วย ให้กลับไปที่หน้ารายการผู้ป่วย
-        header("Location: patients.php");
-        exit;
-    }
-
-    $patient = $result->fetch_assoc();
-}
-
-// การลบผู้ป่วย - เฉพาะ admin เท่านั้น
-if ($action == 'delete' && $patient_id > 0 && $isAdmin) {
-    // ตรวจสอบว่ามี medical records หรือไม่
-    $check_records_sql = "SELECT COUNT(*) as count FROM medical_records WHERE patient_id = ?";
-    $check_stmt = $conn->prepare($check_records_sql);
-    $check_stmt->bind_param("i", $patient_id);
-    $check_stmt->execute();
-    $check_result = $check_stmt->get_result();
-    $records_count = $check_result->fetch_assoc()['count'];
-
-    if ($records_count > 0) {
-        // มี medical records ให้แจ้งเตือนและขอยืนยัน
-        if (isset($_GET['confirm']) && $_GET['confirm'] == 'yes') {
-            // ลบ medical records ก่อน
-            $delete_records_sql = "DELETE FROM medical_records WHERE patient_id = ?";
-            $delete_records_stmt = $conn->prepare($delete_records_sql);
-            $delete_records_stmt->bind_param("i", $patient_id);
-            $delete_records_stmt->execute();
-        } else {
-            // แสดงหน้าขอยืนยัน
-            $action = 'confirm_delete';
-        }
-    }
-
-    if ($action != 'confirm_delete') {
-        $sql = "DELETE FROM patients WHERE id = ?";
-        $stmt = $conn->prepare($sql);
-        $stmt->bind_param("i", $patient_id);
-
-        if ($stmt->execute()) {
-            header("Location: patients.php?success=deleted");
-        } else {
-            header("Location: patients.php?error=delete_failed");
-        }
-        exit;
-    }
-}
-
-// การบันทึกข้อมูลผู้ป่วย (เพิ่มหรือแก้ไข) - ทุกคนทำได้
-if ($_SERVER["REQUEST_METHOD"] == "POST") {
-    // รับค่าจากฟอร์มเฉพาะฟิลด์ที่มีในตาราง
-    $formData = [];
-    foreach ($_POST as $key => $value) {
-        if (in_array($key, $table_columns)) {
-            // ตรวจสอบและแปลงรูปแบบวันที่ถ้าจำเป็น
-            if (strpos(strtolower($column_types[$key]), 'date') !== false) {
-                // แปลงวันที่จากรูปแบบ DD/MM/YYYY เป็น YYYY-MM-DD
-                if (!empty($value) && preg_match('/^\d{1,2}\/\d{1,2}\/\d{4}$/', $value)) {
-                    $date_parts = explode('/', $value);
-                    if (count($date_parts) === 3) {
-                        $value = $date_parts[2] . '-' . str_pad($date_parts[1], 2, '0', STR_PAD_LEFT) . '-' . str_pad($date_parts[0], 2, '0', STR_PAD_LEFT);
-                    }
-                }
-                // แปลงวันที่จากรูปแบบ DD-MM-YYYY เป็น YYYY-MM-DD
-                elseif (!empty($value) && preg_match('/^\d{1,2}-\d{1,2}-\d{4}$/', $value)) {
-                    $date_parts = explode('-', $value);
-                    if (count($date_parts) === 3) {
-                        $value = $date_parts[2] . '-' . str_pad($date_parts[1], 2, '0', STR_PAD_LEFT) . '-' . str_pad($date_parts[0], 2, '0', STR_PAD_LEFT);
-                    }
-                }
-            }
-            $formData[$key] = sanitize($value);
-        }
-    }
-
-    // ตรวจสอบว่ามีข้อมูลที่จำเป็นหรือไม่
-    $required_message = '';
-
-    // ตรวจสอบข้อมูลที่จำเป็น
-    if (empty($formData['first_name'])) {
-        $required_message = "กรุณากรอกชื่อผู้ป่วย";
-    } elseif (empty($formData['last_name'])) {
-        $required_message = "กรุณากรอกนามสกุลผู้ป่วย";
-    }
-
-    if (!empty($required_message)) {
-        $error = alert($required_message, "danger");
+    if ($records_count > 0 && !isset($_GET['confirm'])) {
+        // Show confirmation page
+        $action = 'confirm_delete';
     } else {
-        // กรณีมีฟิลด์ created_at และกำลังเพิ่มข้อมูลใหม่
-        if (in_array('created_at', $table_columns) && $action != 'edit') {
-            $formData['created_at'] = date('Y-m-d H:i:s');
+        // Delete medical records first if they exist
+        if ($records_count > 0) {
+            $conn->prepare("DELETE FROM medical_records WHERE patient_id = ?")->execute([$patient_id]);
         }
-
-        // กรณีมีฟิลด์ updated_at
-        if (in_array('updated_at', $table_columns)) {
-            $formData['updated_at'] = date('Y-m-d H:i:s');
-        }
-
-        // เพิ่มข้อมูลผู้ที่แก้ไข
-        if ($action == 'edit' && in_array('updated_by', $table_columns)) {
-            $formData['updated_by'] = $user_id;
-        } elseif ($action != 'edit' && in_array('created_by', $table_columns)) {
-            $formData['created_by'] = $user_id;
-        }
-
-        // สร้างคำสั่ง SQL ตามการกระทำ
-        if ($action == 'edit' && $patient_id > 0) {
-            // อัปเดตข้อมูลผู้ป่วย - ทุกคนทำได้
-            $setClause = [];
-            foreach ($formData as $key => $value) {
-                $setClause[] = "$key = ?";
-            }
-
-            // เพิ่ม id เข้าไปในเงื่อนไข WHERE
-            $sql = "UPDATE patients SET " . implode(', ', $setClause) . " WHERE id = ?";
-            $stmt = $conn->prepare($sql);
-
-            // สร้าง parameter type และ values
-            $paramTypes = str_repeat('s', count($formData)) . 'i'; // string ตามจำนวน + integer 1 ตัว
-            $paramValues = array_values($formData);
-            $paramValues[] = $patient_id;
-
-            // ใช้ refs เพื่อ bind parameter
-            $refs = [];
-            foreach ($paramValues as $key => $value) {
-                $refs[$key] = &$paramValues[$key];
-            }
-            array_unshift($refs, $stmt, $paramTypes);
-            call_user_func_array('mysqli_stmt_bind_param', $refs);
+        
+        // Delete patient
+        $result = executeQuery($conn, "DELETE FROM patients WHERE id = ?", [$patient_id], 'i');
+        
+        if ($result['success']) {
+            redirect('patients.php', 'Patient deleted successfully', 'success');
         } else {
-            // เพิ่มผู้ป่วยใหม่ - ทุกคนทำได้
-            $columns = array_keys($formData);
-            $placeholders = array_fill(0, count($columns), '?');
-
-            $sql = "INSERT INTO patients (" . implode(', ', $columns) . ") VALUES (" . implode(', ', $placeholders) . ")";
-            $stmt = $conn->prepare($sql);
-
-            // สร้าง parameter type และ values
-            $paramTypes = str_repeat('s', count($formData));
-            $paramValues = array_values($formData);
-
-            // ใช้ refs เพื่อ bind parameter
-            $refs = [];
-            foreach ($paramValues as $key => $value) {
-                $refs[$key] = &$paramValues[$key];
-            }
-            array_unshift($refs, $stmt, $paramTypes);
-            call_user_func_array('mysqli_stmt_bind_param', $refs);
-        }
-
-        if ($stmt->execute()) {
-            $action_text = ($action == 'edit') ? "Patient information has been successfully updated." : "Patient added successfully";
-            $success = alert($action_text, "success");
-
-            if ($action != 'edit') {
-                // ล้างข้อมูลในฟอร์มหลังจากเพิ่มผู้ป่วยสำเร็จ
-                $patient = array_fill_keys($table_columns, '');
-                if (isset($patient['id'])) {
-                    unset($patient['id']);
-                }
-            }
-        } else {
-            $error = alert("An error occurred.: " . $stmt->error, "danger");
+            redirect('patients.php', 'Error deleting patient', 'error');
         }
     }
 }
 
-// หัวข้อและชื่อปุ่มตามการกระทำ
-if ($action == 'confirm_delete') {
-    $page_title = 'Confirm Delete Patient';
-    $button_text = '';
-} else {
-    $page_title = ($action == 'edit') ? 'Edit Patient' : 'Add New Patient';
-    $button_text = ($action == 'edit') ? 'Update Patient' : 'Add Patient';
+// Handle form submission
+if ($_SERVER["REQUEST_METHOD"] == "POST") {
+    // Validate required fields
+    $errors = validatePatientData($_POST);
+    
+    if (!empty($errors)) {
+        $error = alert(implode('<br>', $errors), "danger");
+    } else {
+        // Prepare patient data
+        $isEdit = ($action == 'edit');
+        $patientData = preparePatientData($_POST, $user_id, $isEdit);
+        
+        // Combine address fields into one address field for backward compatibility
+        $addressParts = [];
+        if (!empty($_POST['province'])) $addressParts[] = trim($_POST['province']);
+        if (!empty($_POST['district'])) $addressParts[] = trim($_POST['district']);
+        if (!empty($_POST['county'])) $addressParts[] = trim($_POST['county']);
+        
+        $patientData['address'] = implode(', ', $addressParts);
+        
+        if ($isEdit && $patient_id > 0) {
+            // Update patient
+            $columns = array_keys($patientData);
+            $setClause = implode(' = ?, ', $columns) . ' = ?';
+            $sql = "UPDATE patients SET {$setClause} WHERE id = ?";
+            
+            $params = array_values($patientData);
+            $params[] = $patient_id;
+            $types = str_repeat('s', count($patientData)) . 'i';
+            
+            $result = executeQuery($conn, $sql, $params, $types);
+            
+            if ($result['success']) {
+                $success = alert("Patient information updated successfully", "success");
+            } else {
+                $error = alert("Error updating patient information", "danger");
+            }
+        } else {
+            // Insert new patient
+            $columns = array_keys($patientData);
+            $placeholders = str_repeat('?,', count($columns) - 1) . '?';
+            $sql = "INSERT INTO patients (" . implode(', ', $columns) . ") VALUES ({$placeholders})";
+            
+            $params = array_values($patientData);
+            $types = str_repeat('s', count($patientData));
+            
+            $result = executeQuery($conn, $sql, $params, $types);
+            
+            if ($result['success']) {
+                $success = alert("Patient added successfully", "success");
+                $patient = []; // Clear form data
+            } else {
+                $error = alert("Error adding patient", "danger");
+            }
+        }
+    }
 }
+
+// Parse existing address for editing
+$addressParts = ['province' => '', 'district' => '', 'county' => ''];
+if (!empty($patient['address'])) {
+    $parts = explode(',', $patient['address']);
+    $addressParts['province'] = trim($parts[0] ?? '');
+    $addressParts['district'] = trim($parts[1] ?? '');
+    $addressParts['county'] = trim($parts[2] ?? '');
+}
+
+// Page configuration
+$page_title = match($action) {
+    'edit' => 'Edit Patient',
+    'confirm_delete' => 'Confirm Delete Patient',
+    default => 'Add New Patient'
+};
+
+$button_text = $action == 'edit' ? 'Update Patient' : 'Add Patient';
+
+// Laos Administrative Divisions: 17 Provinces + 1 Capital
+$laos_provinces = [
+    'Vientiane Capital', // นครหลวงเวียงจันทน์
+    'Attapeu', 'Bokeo', 'Bolikhamxai', 'Champasak', 'Houaphanh',
+    'Khammouan', 'Luang Namtha', 'Luang Prabang', 'Oudomxai', 'Phongsali',
+    'Sainyabuli', 'Salavan', 'Savannakhet', 'Sekong', 'Vientiane Province', 
+    'Xaisomboun', 'Xieng Khouang'
+];
+
+// Districts by Province
+$districts_by_province = [
+    'Vientiane Capital' => [
+        'Chanthabouly', 'Hadxaifong', 'Mayparkngum', 'Naxaithong', 'Pakngum', 
+        'Sangthong', 'Sikhottabong', 'Sisattanak', 'Xaysetha'
+    ],
+    'Attapeu' => [
+        'Sanamxai', 'Sanxai', 'Phouvong', 'Xaysetha', 'Samakkhixai'
+    ],
+    'Bokeo' => [
+        'Houayxai', 'Tonpheung', 'Meung', 'Paktha', 'Pha Oudom'
+    ],
+    'Bolikhamxai' => [
+        'Pakxan', 'Thaphabat', 'Pakkading', 'Borikhan', 'Khamkeut', 'Viengthong'
+    ],
+    'Champasak' => [
+        'Pakse', 'Champasak', 'Bachiangchaleunsouk', 'Khong', 'Mounlapamok', 
+        'Pakxong', 'Pathoumphone', 'Phonthong', 'Soukhouma', 'Sanasomboun'
+    ],
+    'Houaphanh' => [
+        'Xam Neua', 'Viengxai', 'Viengthong', 'Houamuang', 'Aed', 'Kouan', 
+        'Xamtai', 'Sopbao', 'Et', 'Xiangkho'
+    ],
+    'Khammouan' => [
+        'Thakhek', 'Mahaxai', 'Hinboun', 'Nongbok', 'Xe Bang Fai', 
+        'Yommalath', 'Boualapha', 'Nakai', 'Gnommalat'
+    ],
+    'Luang Namtha' => [
+        'Luang Namtha', 'Sing', 'Long', 'Viengphoukha', 'Nalae'
+    ],
+    'Luang Prabang' => [
+        'Luang Prabang', 'Xieng Ngeun', 'Nan', 'Pak Ou', 'Nambak', 
+        'Ngoi', 'Pak Xeng', 'Phonxai', 'Chomphet', 'Viengkham', 'Phoukhoune'
+    ],
+    'Oudomxai' => [
+        'Xai', 'Nga', 'Beng', 'Houn', 'La', 'Namor', 'Pakbeng'
+    ],
+    'Phongsali' => [
+        'Phongsali', 'Mai', 'Khua', 'Samphanh', 'Boun Neua', 'Bountai', 'Nhot Ou'
+    ],
+    'Sainyabuli' => [
+        'Sainyabuli', 'Hongsa', 'Ngeun', 'Xienghon', 'Phiang', 'Parklai', 
+        'Kenethao', 'Khop', 'Botene', 'Thongmyxai', 'Beng'
+    ],
+    'Salavan' => [
+        'Salavan', 'Khongxedon', 'Laongam', 'Toumlane', 'Taoih', 
+        'Samouay', 'Va Pi', 'Lakhonpheng'
+    ],
+    'Savannakhet' => [
+        'Kaysone Phomvihane', 'Outhoumphone', 'Atsaphangthong', 'Phin', 
+        'Songkhone', 'Champhone', 'Nong', 'Atsaphone', 'Xaybouly', 
+        'Xepon', 'Vilabuly', 'Thapangthong', 'Kaisone Phomvihan', 
+        'Sepon', 'Phine'
+    ],
+    'Sekong' => [
+        'Lamam', 'Kaleum', 'Dakcheung', 'Thateng'
+    ],
+    'Vientiane Province' => [
+        'Phonhong', 'Thoulakhom', 'Keo Oudom', 'Mad', 'Feuang', 'Xanakharm', 
+        'Hinheup', 'Vangvieng', 'Kasi', 'Meun', 'Kham'
+    ],
+    'Xaisomboun' => [
+        'Anouvong', 'Thathom', 'Longxan', 'Hom'
+    ],
+    'Xieng Khouang' => [
+        'Phonsavan', 'Pek', 'Kham', 'Nonghet', 'Khoun', 'Morkmay', 'Paek'
+    ]
+];
 ?>
 <!DOCTYPE html>
-<html
-    lang="en"
-    class="light-style layout-menu-fixed"
-    dir="ltr"
-    data-theme="theme-default"
-    data-assets-path="../assets/"
-    data-template="vertical-menu-template-free">
-
+<html lang="en" class="light-style layout-menu-fixed" dir="ltr" data-theme="theme-default">
 <head>
     <meta charset="utf-8" />
-    <meta
-        name="viewport"
-        content="width=device-width, initial-scale=1.0, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0" />
-
-    <title><?php echo $page_title; ?> | Onemeds</title>
-
-    <meta name="description" content="" />
-
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0" />
+    <title><?php echo $page_title; ?> | Healthcare System</title>
+    
     <!-- Favicon -->
     <link rel="icon" type="image/x-icon" href="../assets/img/favicon/favicon.ico" />
-
+    
     <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-        href="https://fonts.googleapis.com/css2?family=Public+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400;1,500;1,600;1,700&display=swap"
-        rel="stylesheet" />
-
-    <!-- Icons. Uncomment required icon fonts -->
-    <link rel="stylesheet" href="../assets/vendor/fonts/boxicons.css" />
-
+    <link href="https://fonts.googleapis.com/css2?family=Public+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400;1,500;1,600;1,700&display=swap" rel="stylesheet" />
+    
     <!-- Core CSS -->
+    <link rel="stylesheet" href="../assets/vendor/fonts/boxicons.css" />
     <link rel="stylesheet" href="../assets/vendor/css/core.css" class="template-customizer-core-css" />
     <link rel="stylesheet" href="../assets/vendor/css/theme-default.css" class="template-customizer-theme-css" />
     <link rel="stylesheet" href="../assets/css/demo.css" />
-
-    <!-- Vendors CSS -->
     <link rel="stylesheet" href="../assets/vendor/libs/perfect-scrollbar/perfect-scrollbar.css" />
-
-    <!-- Page CSS -->
+    
     <style>
         .user-role-indicator {
-            background: linear-gradient(135deg, #28a745, #20c997);
-            color: white;
-            padding: 8px 16px;
-            border-radius: 25px;
-            font-size: 12px;
-            font-weight: 600;
-            display: inline-block;
-            margin-left: 10px;
+            background: linear-gradient(135deg, <?php echo $isAdmin ? '#007bff, #0056b3' : '#28a745, #20c997'; ?>);
+            color: white; padding: 8px 16px; border-radius: 25px;
+            font-size: 12px; font-weight: 600; display: inline-block; margin-left: 10px;
         }
-
-        .admin-role-indicator {
-            background: linear-gradient(135deg, #007bff, #0056b3);
-        }
-
-        .permission-info {
-            background: #f8f9fa;
-            border-left: 4px solid #28a745;
-            padding: 15px;
-            margin-bottom: 20px;
-            border-radius: 4px;
-        }
-
-        .admin-permission-info {
-            border-left-color: #007bff;
-        }
-
-        .confirm-delete-card {
-            border: 2px solid #dc3545;
-            background: #fff5f5;
-        }
-
-        .patient-info-card {
-            background: #f8f9fa;
-            border-radius: 8px;
-            padding: 15px;
-            margin-bottom: 20px;
-        }
+        .confirm-delete-card { border: 2px solid #dc3545; background: #fff5f5; }
+        .patient-info-card { background: #f8f9fa; border-radius: 8px; padding: 15px; margin-bottom: 20px; }
+        .address-section { background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0; }
+        .address-section h6 { color: #495057; margin-bottom: 15px; }
     </style>
-
-    <!-- Helpers -->
+    
     <script src="../assets/vendor/js/helpers.js"></script>
-
-    <!--! Template customizer & Theme config files MUST be included after core stylesheets and helpers.js in the <head> section -->
-    <!--? Config:  Mandatory theme config file contain global vars & default theme options, Set your preferred theme option in this file.  -->
     <script src="../assets/js/config.js"></script>
 </head>
 
 <body>
-    <!-- Layout wrapper -->
     <div class="layout-wrapper layout-content-navbar">
         <div class="layout-container">
-            <!-- Layout container -->
+            <?php include '../includes/sidebar.php'; ?>
+            
             <div class="layout-page">
-                <!-- Navbar -->
-                <?php include '../includes/sidebar.php'; ?>
-                <!-- / Navbar -->
-
-                <!-- Content wrapper -->
                 <div class="content-wrapper">
-                    <!-- Content -->
                     <div class="container-xxl flex-grow-1 container-p-y">
                         <h4 class="fw-bold py-3 mb-4">
                             <span class="text-muted fw-light">Patients /</span> <?php echo $page_title; ?>
-                            <span class="user-role-indicator <?php echo $isAdmin ? 'admin-role-indicator' : ''; ?>">
+                            <span class="user-role-indicator">
                                 <?php echo $isAdmin ? 'Admin Access' : 'User Access'; ?>
                             </span>
                         </h4>
 
                         <?php if ($action == 'confirm_delete'): ?>
                             <!-- Confirm Delete Section -->
-                            <div class="row">
-                                <div class="col-md-12">
-                                    <div class="card mb-4 confirm-delete-card">
-                                        <h5 class="card-header text-danger">
-                                            <i class="bx bx-warning me-2"></i>
-                                            Confirm Patient Deletion
-                                        </h5>
-                                        <div class="card-body">
-                                            <div class="patient-info-card">
-                                                <h6 class="mb-3">Patient Information:</h6>
-                                                <div class="row">
-                                                    <div class="col-md-6">
-                                                        <p><strong>Name:</strong> <?php echo htmlspecialchars($patient['first_name'] . ' ' . $patient['last_name']); ?></p>
-                                                        <p><strong>Age:</strong> <?php echo htmlspecialchars($patient['age']); ?></p>
-                                                        <p><strong>Phone:</strong> <?php echo htmlspecialchars($patient['phone']); ?></p>
-                                                    </div>
-                                                    <div class="col-md-6">
-                                                        <p><strong>Email:</strong> <?php echo htmlspecialchars($patient['email']); ?></p>
-                                                        <p><strong>Patient ID:</strong> <?php echo str_pad($patient['id'], 4, '0', STR_PAD_LEFT); ?></p>
-                                                    </div>
-                                                </div>
+                            <div class="card mb-4 confirm-delete-card">
+                                <h5 class="card-header text-danger">
+                                    <i class="bx bx-warning me-2"></i>Confirm Patient Deletion
+                                </h5>
+                                <div class="card-body">
+                                    <div class="patient-info-card">
+                                        <h6 class="mb-3">Patient Information:</h6>
+                                        <div class="row">
+                                            <div class="col-md-6">
+                                                <p><strong>Name:</strong> <?php echo htmlspecialchars($patient['first_name'] . ' ' . $patient['last_name']); ?></p>
+                                                <p><strong>Age:</strong> <?php echo htmlspecialchars($patient['age']); ?></p>
+                                                <p><strong>Phone:</strong> <?php echo htmlspecialchars($patient['phone']); ?></p>
                                             </div>
-
-                                            <div class="alert alert-danger">
-                                                <h6 class="mb-2">
-                                                    <i class="bx bx-error-circle me-1"></i>
-                                                    Warning: This action cannot be undone!
-                                                </h6>
-                                                <p class="mb-2">This patient has <?php echo $records_count; ?> medical record(s) associated with them.</p>
-                                                <p class="mb-0">Deleting this patient will also permanently delete all their medical records.</p>
-                                            </div>
-
-                                            <div class="text-center">
-                                                <a href="patients_action.php?action=delete&id=<?php echo $patient_id; ?>&confirm=yes" 
-                                                   class="btn btn-danger me-3">
-                                                    <i class="bx bx-trash me-1"></i>
-                                                    Yes, Delete Patient and All Records
-                                                </a>
-                                                <a href="patients.php" class="btn btn-secondary">
-                                                    <i class="bx bx-x me-1"></i>
-                                                    Cancel
-                                                </a>
+                                            <div class="col-md-6">
+                                                <p><strong>Email:</strong> <?php echo htmlspecialchars($patient['email']); ?></p>
+                                                <p><strong>Patient ID:</strong> <?php echo str_pad($patient['id'], 4, '0', STR_PAD_LEFT); ?></p>
                                             </div>
                                         </div>
+                                    </div>
+
+                                    <div class="alert alert-danger">
+                                        <h6 class="mb-2"><i class="bx bx-error-circle me-1"></i>Warning: This action cannot be undone!</h6>
+                                        <p class="mb-2">This patient has <?php echo $records_count; ?> medical record(s) associated with them.</p>
+                                        <p class="mb-0">Deleting this patient will also permanently delete all their medical records.</p>
+                                    </div>
+
+                                    <div class="text-center">
+                                        <a href="patients_action.php?action=delete&id=<?php echo $patient_id; ?>&confirm=yes" 
+                                           class="btn btn-danger me-3">
+                                            <i class="bx bx-trash me-1"></i>Yes, Delete Patient and All Records
+                                        </a>
+                                        <a href="patients.php" class="btn btn-secondary">
+                                            <i class="bx bx-x me-1"></i>Cancel
+                                        </a>
                                     </div>
                                 </div>
                             </div>
                         <?php else: ?>
                             <!-- Add/Edit Form Section -->
-                            <div class="row">
-                                <div class="col-md-12">
-                                    <div class="card mb-4">
-                                        <h5 class="card-header"><?php echo $page_title; ?></h5>
+                            <div class="card mb-4">
+                                <h5 class="card-header"><?php echo $page_title; ?></h5>
 
-                                        <!-- Alerts -->
-                                        <?php if (!empty($error)): ?>
-                                            <?php echo $error; ?>
-                                        <?php endif; ?>
+                                <!-- Alerts -->
+                                <?php if (!empty($error)) echo $error; ?>
+                                <?php if (!empty($success)) echo $success; ?>
 
-                                        <?php if (!empty($success)): ?>
-                                            <?php echo $success; ?>
-                                        <?php endif; ?>
-
-                                        <div class="card-body">
-                                            <form method="POST" action="<?php echo htmlspecialchars($_SERVER["PHP_SELF"] . '?action=' . $action . ($patient_id > 0 ? '&id=' . $patient_id : '')); ?>">
-                                                <div class="row">
-                                                    <div class="mb-3 col-md-6">
-                                                        <label for="first_name" class="form-label">First Name *</label>
-                                                        <input
-                                                            class="form-control"
-                                                            type="text"
-                                                            id="first_name"
-                                                            name="first_name"
-                                                            value="<?php echo isset($patient['first_name']) ? htmlspecialchars($patient['first_name']) : ''; ?>"
-                                                            required />
-                                                    </div>
-                                                    <div class="mb-3 col-md-6">
-                                                        <label for="last_name" class="form-label">Last Name *</label>
-                                                        <input class="form-control"
-                                                            type="text"
-                                                            id="last_name"
-                                                            name="last_name"
-                                                            value="<?php echo isset($patient['last_name']) ? htmlspecialchars($patient['last_name']) : ''; ?>"
-                                                            required />
-                                                    </div>
-                                                </div>
-
-                                                <div class="row">
-                                                    <div class="mb-3 col-md-3">
-                                                        <label for="age" class="form-label">Age</label>
-                                                        <input
-                                                            class="form-control"
-                                                            type="number"
-                                                            id="age"
-                                                            name="age"
-                                                            min="1"
-                                                            max="150"
-                                                            value="<?php echo isset($patient['age']) ? htmlspecialchars($patient['age']) : ''; ?>" />
-                                                    </div>
-                                                    <div class="mb-3 col-md-6">
-                                                        <label for="dob" class="form-label">Date of Birth</label>
-                                                        <input
-                                                            class="form-control"
-                                                            type="date"
-                                                            id="dob"
-                                                            name="dob"
-                                                            value="<?php
-                                                                    if (isset($patient['dob']) && !empty($patient['dob']) && $patient['dob'] != '0000-00-00') {
-                                                                        $date_obj = date_create($patient['dob']);
-                                                                        if ($date_obj) {
-                                                                            echo date_format($date_obj, 'Y-m-d');
-                                                                        }
-                                                                    }
-                                                                    ?>" />
-                                                        <small class="text-muted">Format: YYYY-MM-DD</small>
-                                                    </div>
-                                                    <div class="mb-3 col-md-3">
-                                                        <label for="gender" class="form-label">Gender</label>
-                                                        <select id="gender" name="gender" class="form-select">
-                                                            <option value="">Select Gender</option>
-                                                            <option value="M" <?php echo (isset($patient['gender']) && $patient['gender'] == 'M') ? 'selected' : ''; ?>>Male</option>
-                                                            <option value="F" <?php echo (isset($patient['gender']) && $patient['gender'] == 'F') ? 'selected' : ''; ?>>Female</option>
-                                                            <option value="O" <?php echo (isset($patient['gender']) && $patient['gender'] == 'O') ? 'selected' : ''; ?>>Other</option>
-                                                        </select>
-                                                    </div>
-                                                </div>
-
-                                                <div class="mb-3">
-                                                    <label for="address" class="form-label">Address</label>
-                                                    <textarea
-                                                        class="form-control"
-                                                        id="address"
-                                                        name="address"
-                                                        rows="3"><?php echo isset($patient['address']) ? htmlspecialchars($patient['address']) : ''; ?></textarea>
-                                                </div>
-
-                                                <div class="row">
-                                                    <div class="mb-3 col-md-6">
-                                                        <label for="phone" class="form-label">Phone</label>
-                                                        <input
-                                                            class="form-control"
-                                                            type="text"
-                                                            id="phone"
-                                                            name="phone"
-                                                            value="<?php echo isset($patient['phone']) ? htmlspecialchars($patient['phone']) : ''; ?>" />
-                                                    </div>
-                                                    <div class="mb-3 col-md-6">
-                                                        <label for="email" class="form-label">Email</label>
-                                                        <input
-                                                            class="form-control"
-                                                            type="email"
-                                                            id="email"
-                                                            name="email"
-                                                            value="<?php echo isset($patient['email']) ? htmlspecialchars($patient['email']) : ''; ?>" />
-                                                    </div>
-                                                </div>
-
-                                                <div class="row">
-                                                    <div class="mb-3 col-md-6">
-                                                        <label for="nationality" class="form-label">Nationality</label>
-                                                        <input
-                                                            class="form-control"
-                                                            type="text"
-                                                            id="nationality"
-                                                            name="nationality"
-                                                            value="<?php echo isset($patient['nationality']) ? htmlspecialchars($patient['nationality']) : ''; ?>" />
-                                                    </div>
-                                                    <div class="mb-3 col-md-6">
-                                                        <label for="religion" class="form-label">Religion</label>
-                                                        <input
-                                                            class="form-control"
-                                                            type="text"
-                                                            id="religion"
-                                                            name="religion"
-                                                            value="<?php echo isset($patient['religion']) ? htmlspecialchars($patient['religion']) : ''; ?>" />
-                                                    </div>
-                                                </div>
-
-                                                <div class="row">
-                                                    <div class="mb-3 col-md-6">
-                                                        <label for="marital_status" class="form-label">Marital Status</label>
-                                                        <select id="marital_status" name="marital_status" class="form-select">
-                                                            <option value="">Select Marital Status</option>
-                                                            <option value="Single" <?php echo (isset($patient['marital_status']) && $patient['marital_status'] == 'Single') ? 'selected' : ''; ?>>Single</option>
-                                                            <option value="Married" <?php echo (isset($patient['marital_status']) && $patient['marital_status'] == 'Married') ? 'selected' : ''; ?>>Married</option>
-                                                            <option value="Divorced" <?php echo (isset($patient['marital_status']) && $patient['marital_status'] == 'Divorced') ? 'selected' : ''; ?>>Divorced</option>
-                                                            <option value="Widowed" <?php echo (isset($patient['marital_status']) && $patient['marital_status'] == 'Widowed') ? 'selected' : ''; ?>>Widowed</option>
-                                                        </select>
-                                                    </div>
-                                                    <div class="mb-3 col-md-6">
-                                                        <label for="occupation" class="form-label">Occupation</label>
-                                                        <input
-                                                            class="form-control"
-                                                            type="text"
-                                                            id="occupation"
-                                                            name="occupation"
-                                                            value="<?php echo isset($patient['occupation']) ? htmlspecialchars($patient['occupation']) : ''; ?>" />
-                                                    </div>
-                                                </div>
-
-                                                <hr class="my-4">
-                                                <h6 class="mb-3">Emergency Contact Information</h6>
-
-                                                <div class="row">
-                                                    <div class="mb-3 col-md-6">
-                                                        <label for="emergency_contact_name" class="form-label">Emergency Contact Name</label>
-                                                        <input
-                                                            class="form-control"
-                                                            type="text"
-                                                            id="emergency_contact_name"
-                                                            name="emergency_contact_name"
-                                                            value="<?php echo isset($patient['emergency_contact_name']) ? htmlspecialchars($patient['emergency_contact_name']) : ''; ?>" />
-                                                    </div>
-                                                    <div class="mb-3 col-md-6">
-                                                        <label for="emergency_contact_relationship" class="form-label">Relationship</label>
-                                                        <input
-                                                            class="form-control"
-                                                            type="text"
-                                                            id="emergency_contact_relationship"
-                                                            name="emergency_contact_relationship"
-                                                            value="<?php echo isset($patient['emergency_contact_relationship']) ? htmlspecialchars($patient['emergency_contact_relationship']) : ''; ?>" />
-                                                    </div>
-                                                </div>
-
-                                                <div class="mb-3">
-                                                    <label for="emergency_contact_phone" class="form-label">Emergency Contact Phone</label>
-                                                    <input
-                                                        class="form-control"
-                                                        type="text"
-                                                        id="emergency_contact_phone"
-                                                        name="emergency_contact_phone"
-                                                        value="<?php echo isset($patient['emergency_contact_phone']) ? htmlspecialchars($patient['emergency_contact_phone']) : ''; ?>" />
-                                                </div>
-
-                                                <div class="mt-4">
-                                                    <button type="submit" class="btn btn-primary me-2">
-                                                        <i class="bx bx-check me-1"></i>
-                                                        <?php echo $button_text; ?>
-                                                    </button>
-                                                    <a href="patients.php" class="btn btn-outline-secondary">
-                                                        <i class="bx bx-x me-1"></i>
-                                                        Cancel
-                                                    </a>
-                                                </div>
-                                            </form>
+                                <div class="card-body">
+                                    <form method="POST" action="<?php echo htmlspecialchars($_SERVER["PHP_SELF"] . '?action=' . $action . ($patient_id > 0 ? '&id=' . $patient_id : '')); ?>">
+                                        <!-- Personal Information -->
+                                        <div class="row">
+                                            <div class="mb-3 col-md-6">
+                                                <label for="first_name" class="form-label">First Name *</label>
+                                                <input class="form-control" type="text" id="first_name" name="first_name"
+                                                       value="<?php echo htmlspecialchars($patient['first_name'] ?? ''); ?>" required />
+                                            </div>
+                                            <div class="mb-3 col-md-6">
+                                                <label for="last_name" class="form-label">Last Name *</label>
+                                                <input class="form-control" type="text" id="last_name" name="last_name"
+                                                       value="<?php echo htmlspecialchars($patient['last_name'] ?? ''); ?>" required />
+                                            </div>
                                         </div>
-                                    </div>
+
+                                        <div class="row">
+                                            <div class="mb-3 col-md-3">
+                                                <label for="age" class="form-label">Age</label>
+                                                <input class="form-control" type="number" id="age" name="age" min="1" max="150"
+                                                       value="<?php echo htmlspecialchars($patient['age'] ?? ''); ?>" />
+                                            </div>
+                                            <div class="mb-3 col-md-6">
+                                                <label for="dob" class="form-label">Date of Birth</label>
+                                                <input class="form-control" type="date" id="dob" name="dob"
+                                                       value="<?php echo !empty($patient['dob']) && $patient['dob'] != '0000-00-00' ? date('Y-m-d', strtotime($patient['dob'])) : ''; ?>" />
+                                            </div>
+                                            <div class="mb-3 col-md-3">
+                                                <label for="gender" class="form-label">Gender</label>
+                                                <select id="gender" name="gender" class="form-select">
+                                                    <option value="">Select Gender</option>
+                                                    <option value="M" <?php echo ($patient['gender'] ?? '') == 'M' ? 'selected' : ''; ?>>Male</option>
+                                                    <option value="F" <?php echo ($patient['gender'] ?? '') == 'F' ? 'selected' : ''; ?>>Female</option>
+                                                    <option value="O" <?php echo ($patient['gender'] ?? '') == 'O' ? 'selected' : ''; ?>>Other</option>
+                                                </select>
+                                            </div>
+                                        </div>
+
+                                        <!-- Address Information -->
+                                     
+                                            <div class="row">
+                                                <div class="mb-3 col-md-4">
+                                                    <label for="province" class="form-label">Province/Capital</label>
+                                                    <select class="form-select" id="province" name="province" required>
+                                                        <option value="">Select Province/Capital</option>
+                                                        <optgroup label="Capital">
+                                                            <option value="Vientiane Capital" 
+                                                                <?php echo $addressParts['province'] == 'Vientiane Capital' ? 'selected' : ''; ?>>
+                                                                🏛️ Vientiane Capital
+                                                            </option>
+                                                        </optgroup>
+                                                        <optgroup label="Provinces (17 แขวง)">
+                                                            <?php 
+                                                            $provinces_only = array_slice($laos_provinces, 1); // Skip Vientiane Capital
+                                                            foreach ($provinces_only as $province): 
+                                                            ?>
+                                                                <option value="<?php echo $province; ?>" 
+                                                                    <?php echo $addressParts['province'] == $province ? 'selected' : ''; ?>>
+                                                                    <?php echo $province; ?>
+                                                                </option>
+                                                            <?php endforeach; ?>
+                                                        </optgroup>
+                                                    </select>
+                                                </div>
+                                                <div class="mb-3 col-md-4">
+                                                    <label for="district" class="form-label">District</label>
+                                                    <select class="form-select" id="district" name="district" required disabled>
+                                                        <option value="">Select province first</option>
+                                                    </select>
+                                                </div>
+                                                <div class="mb-3 col-md-4">
+                                                    <label for="county" class="form-label">Village</label>
+                                                    <input class="form-control" type="text" id="county" name="county" 
+                                                           placeholder="Enter village name"
+                                                           value="<?php echo htmlspecialchars($addressParts['county']); ?>" />
+                                                </div>
+                                            </div>
+                                      
+
+                                        <!-- Contact Information -->
+                                        <div class="row">
+                                            <div class="mb-3 col-md-6">
+                                                <label for="phone" class="form-label">Phone</label>
+                                                <input class="form-control" type="text" id="phone" name="phone"
+                                                       value="<?php echo htmlspecialchars($patient['phone'] ?? ''); ?>" />
+                                            </div>
+                                            <div class="mb-3 col-md-6">
+                                                <label for="email" class="form-label">Email</label>
+                                                <input class="form-control" type="email" id="email" name="email"
+                                                       value="<?php echo htmlspecialchars($patient['email'] ?? ''); ?>" />
+                                            </div>
+                                        </div>
+
+                                        <!-- Additional Information -->
+                                        <div class="row">
+                                            <div class="mb-3 col-md-6">
+                                                <label for="nationality" class="form-label">Nationality</label>
+                                                <select class="form-select" id="nationality" name="nationality">
+                                                    <option value="">Select Nationality</option>
+                                                    <option value="Lao" <?php echo ($patient['nationality'] ?? '') == 'Lao' ? 'selected' : ''; ?>>Lao</option>
+                                                    <option value="Thai" <?php echo ($patient['nationality'] ?? '') == 'Thai' ? 'selected' : ''; ?>>Thai</option>
+                                                    <option value="Vietnamese" <?php echo ($patient['nationality'] ?? '') == 'Vietnamese' ? 'selected' : ''; ?>>Vietnamese</option>
+                                                    <option value="Chinese" <?php echo ($patient['nationality'] ?? '') == 'Chinese' ? 'selected' : ''; ?>>Chinese</option>
+                                                    <option value="Other" <?php echo ($patient['nationality'] ?? '') == 'Other' ? 'selected' : ''; ?>>Other</option>
+                                                </select>
+                                            </div>
+                                            <div class="mb-3 col-md-6">
+                                                <label for="religion" class="form-label">Religion</label>
+                                                <select class="form-select" id="religion" name="religion">
+                                                    <option value="">Select Religion</option>
+                                                    <option value="Buddhism" <?php echo ($patient['religion'] ?? '') == 'Buddhism' ? 'selected' : ''; ?>>Buddhism</option>
+                                                    <option value="Christianity" <?php echo ($patient['religion'] ?? '') == 'Christianity' ? 'selected' : ''; ?>>Christianity</option>
+                                                    <option value="Islam" <?php echo ($patient['religion'] ?? '') == 'Islam' ? 'selected' : ''; ?>>Islam</option>
+                                                    <option value="Animism" <?php echo ($patient['religion'] ?? '') == 'Animism' ? 'selected' : ''; ?>>Animism</option>
+                                                    <option value="Other" <?php echo ($patient['religion'] ?? '') == 'Other' ? 'selected' : ''; ?>>Other</option>
+                                                </select>
+                                            </div>
+                                        </div>
+
+                                        <div class="row">
+                                            <div class="mb-3 col-md-6">
+                                                <label for="marital_status" class="form-label">Marital Status</label>
+                                                <select id="marital_status" name="marital_status" class="form-select">
+                                                    <option value="">Select Marital Status</option>
+                                                    <?php
+                                                    $marital_options = ['Single', 'Married', 'Divorced', 'Widowed'];
+                                                    foreach ($marital_options as $option) {
+                                                        $selected = ($patient['marital_status'] ?? '') == $option ? 'selected' : '';
+                                                        echo "<option value=\"$option\" $selected>$option</option>";
+                                                    }
+                                                    ?>
+                                                </select>
+                                            </div>
+                                            <div class="mb-3 col-md-6">
+                                                <label for="occupation" class="form-label">Occupation</label>
+                                                <input class="form-control" type="text" id="occupation" name="occupation"
+                                                       value="<?php echo htmlspecialchars($patient['occupation'] ?? ''); ?>" />
+                                            </div>
+                                        </div>
+
+                                        <!-- Emergency Contact -->
+                                        <hr class="my-4">
+                                        <h6 class="mb-3"><i class="bx bx-phone me-2"></i>Emergency Contact Information</h6>
+
+                                        <div class="row">
+                                            <div class="mb-3 col-md-6">
+                                                <label for="emergency_contact_name" class="form-label">Emergency Contact Name</label>
+                                                <input class="form-control" type="text" id="emergency_contact_name" name="emergency_contact_name"
+                                                       value="<?php echo htmlspecialchars($patient['emergency_contact_name'] ?? ''); ?>" />
+                                            </div>
+                                            <div class="mb-3 col-md-6">
+                                                <label for="emergency_contact_relationship" class="form-label">Relationship</label>
+                                                <select class="form-select" id="emergency_contact_relationship" name="emergency_contact_relationship">
+                                                    <option value="">Select Relationship</option>
+                                                    <?php
+                                                    $relationships = ['Spouse', 'Parent', 'Child', 'Sibling', 'Friend', 'Other'];
+                                                    foreach ($relationships as $rel) {
+                                                        $selected = ($patient['emergency_contact_relationship'] ?? '') == $rel ? 'selected' : '';
+                                                        echo "<option value=\"$rel\" $selected>$rel</option>";
+                                                    }
+                                                    ?>
+                                                </select>
+                                            </div>
+                                        </div>
+
+                                        <div class="mb-3">
+                                            <label for="emergency_contact_phone" class="form-label">Emergency Contact Phone</label>
+                                            <input class="form-control" type="text" id="emergency_contact_phone" name="emergency_contact_phone"
+                                                   value="<?php echo htmlspecialchars($patient['emergency_contact_phone'] ?? ''); ?>" />
+                                        </div>
+
+                                        <div class="mt-4">
+                                            <button type="submit" class="btn btn-primary me-2">
+                                                <i class="bx bx-check me-1"></i><?php echo $button_text; ?>
+                                            </button>
+                                            <a href="patients.php" class="btn btn-outline-secondary">
+                                                <i class="bx bx-x me-1"></i>Cancel
+                                            </a>
+                                        </div>
+                                    </form>
                                 </div>
                             </div>
                         <?php endif; ?>
                     </div>
-                    <!-- / Content -->
-
-                    <!-- Footer -->
+                    
                     <?php include '../includes/footer.php'; ?>
-                    <!-- / Footer -->
-
-                    <div class="content-backdrop fade"></div>
                 </div>
-                <!-- Content wrapper -->
             </div>
-            <!-- / Layout page -->
         </div>
-
-        <!-- Overlay -->
-        <div class="layout-overlay layout-menu-toggle"></div>
     </div>
-    <!-- / Layout wrapper -->
 
     <!-- Core JS -->
-    <!-- build:js assets/vendor/js/core.js -->
     <script src="../assets/vendor/libs/jquery/jquery.js"></script>
     <script src="../assets/vendor/libs/popper/popper.js"></script>
     <script src="../assets/vendor/js/bootstrap.js"></script>
     <script src="../assets/vendor/libs/perfect-scrollbar/perfect-scrollbar.js"></script>
-
     <script src="../assets/vendor/js/menu.js"></script>
-    <!-- endbuild -->
-
-    <!-- Vendors JS -->
-
-    <!-- Main JS -->
     <script src="../assets/js/main.js"></script>
 
     <script>
+        // Districts data for dynamic loading
+        const districtsByProvince = <?php echo json_encode($districts_by_province); ?>;
+        const currentDistrict = "<?php echo htmlspecialchars($addressParts['district']); ?>";
+
         // Auto focus on first name field when adding new patient
         document.addEventListener('DOMContentLoaded', function() {
             const firstNameInput = document.getElementById('first_name');
-            if (firstNameInput && '<?php echo $action; ?>' === 'add') {
+            if (firstNameInput && '<?php echo $action; ?>' !== 'edit') {
                 firstNameInput.focus();
+            }
+
+            // Initialize district dropdown if editing
+            const provinceSelect = document.getElementById('province');
+            if (provinceSelect.value && currentDistrict) {
+                loadDistricts(provinceSelect.value, currentDistrict);
             }
         });
 
-        // Form validation
-        document.querySelector('form').addEventListener('submit', function(e) {
-            const firstName = document.getElementById('first_name').value.trim();
-            const lastName = document.getElementById('last_name').value.trim();
-            
-            if (!firstName || !lastName) {
-                e.preventDefault();
-                alert('Please fill in both first name and last name.');
-                return false;
-            }
+        // Load districts when province changes
+        document.getElementById('province').addEventListener('change', function() {
+            const selectedProvince = this.value;
+            loadDistricts(selectedProvince);
         });
+
+        function loadDistricts(province, selectedDistrict = '') {
+            const districtSelect = document.getElementById('district');
+            
+            // Clear existing options
+            districtSelect.innerHTML = '<option value="">Select district</option>';
+            
+            if (province && districtsByProvince[province]) {
+                // Enable the select
+                districtSelect.disabled = false;
+                
+                // Add districts for selected province
+                districtsByProvince[province].forEach(function(district) {
+                    const option = document.createElement('option');
+                    option.value = district;
+                    option.textContent = district;
+                    
+                    // Select if this is the current district (for editing)
+                    if (district === selectedDistrict) {
+                        option.selected = true;
+                    }
+                    
+                    districtSelect.appendChild(option);
+                });
+            } else {
+                // Disable if no province selected
+                districtSelect.disabled = true;
+                districtSelect.innerHTML = '<option value="">Select province first</option>';
+            }
+        }
 
         // Calculate age from date of birth
         document.getElementById('dob').addEventListener('change', function() {
@@ -673,7 +590,49 @@ if ($action == 'confirm_delete') {
                 }
             }
         });
+
+        // Form validation
+        document.querySelector('form').addEventListener('submit', function(e) {
+            const firstName = document.getElementById('first_name').value.trim();
+            const lastName = document.getElementById('last_name').value.trim();
+            const province = document.getElementById('province').value;
+            const district = document.getElementById('district').value;
+            
+            if (!firstName || !lastName) {
+                e.preventDefault();
+                alert('Please fill in both first name and last name.');
+                return false;
+            }
+            
+            if (!province) {
+                e.preventDefault();
+                alert('Please select a province.');
+                return false;
+            }
+            
+            if (!district) {
+                e.preventDefault();
+                alert('Please select a district.');
+                return false;
+            }
+        });
+
+        // Real-time address preview
+        function updateAddressPreview() {
+            const province = document.getElementById('province').value;
+            const district = document.getElementById('district').value;
+            const county = document.getElementById('county').value;
+            
+            const parts = [province, district, county].filter(part => part.trim() !== '');
+            const preview = parts.join(', ') || 'Address will appear here...';
+            
+            console.log('Address preview:', preview);
+        }
+
+        // Add event listeners for address preview
+        document.getElementById('province').addEventListener('change', updateAddressPreview);
+        document.getElementById('district').addEventListener('change', updateAddressPreview);
+        document.getElementById('county').addEventListener('input', updateAddressPreview);
     </script>
 </body>
-
 </html>

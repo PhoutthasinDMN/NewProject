@@ -342,7 +342,7 @@ $search_count = count($patients);
                                                                 </a>
                                                                 
                                                                 <!-- Medical Records button - available to all users -->
-                                                                <a href="../medical_records/medical_records.php?patient_id=<?php echo $patient['id']; ?>" 
+                                                                <a href="../medical_records/medical_record_action?patient_id=<?php echo $patient['id']; ?>" 
                                                                    class="btn btn-sm btn-info" 
                                                                    title="View Medical Records">
                                                                     <i class="bx bx-file"></i>

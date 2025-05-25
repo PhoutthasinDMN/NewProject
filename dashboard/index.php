@@ -157,7 +157,7 @@ include '../includes/sidebar.php';
                         <div class="activity-header">
                             <div class="d-flex justify-content-between align-items-center">
                                 <h6 class="mb-0"><i class="bx bx-file me-2 text-success"></i>Recent Records</h6>
-                                <a href="../medical_records/medical_records_action.php" class="btn btn-sm btn-success">View All</a>
+                                <a href="../medical_records/medical_record_action.php" class="btn btn-sm btn-success">View All</a>
                             </div>
                         </div>
                         <div class="activity-body">

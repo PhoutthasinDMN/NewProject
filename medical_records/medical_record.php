@@ -205,7 +205,7 @@ if ($records_result && $records_result->num_rows > 0) {
                                         <button class="btn btn-primary active me-2">
                                             <i class="bx bx-list-ul me-1"></i> Card View
                                         </button>
-                                        <a href="medical_records_action.php?action=add<?php echo $patient_id ? '&patient_id=' . $patient_id : ''; ?>" class="btn btn-success">
+                                        <a href="medical_record_action.php?action=add<?php echo $patient_id ? '&patient_id=' . $patient_id : ''; ?>" class="btn btn-success">
                                             <i class="bx bx-plus me-1"></i> Add New Record
                                         </a>
                                         <?php if ($patient_id): ?>
@@ -243,7 +243,7 @@ if ($records_result && $records_result->num_rows > 0) {
                                                     No medical records available in the system.
                                                 <?php endif; ?>
                                             </p>
-                                            <a href="medical_records_action.php?action=add<?php echo $patient_id ? '&patient_id=' . $patient_id : ''; ?>" class="btn btn-primary">
+                                            <a href="medical_record_action.php?action=add<?php echo $patient_id ? '&patient_id=' . $patient_id : ''; ?>" class="btn btn-primary">
                                                 <i class="bx bx-plus me-1"></i> Add First Record
                                             </a>
                                         </div>
@@ -329,13 +329,13 @@ if ($records_result && $records_result->num_rows > 0) {
                                                         <?php endif; ?>
                                                     </div>
                                                     <div>
-                                                        <a href="medical_records_action.php?action=view&id=<?php echo $record['id']; ?>" class="btn btn-sm btn-outline-primary">
+                                                        <a href="medical_record_action.php?action=view&id=<?php echo $record['id']; ?>" class="btn btn-sm btn-outline-primary">
                                                             <i class="bx bx-show me-1"></i>View
                                                         </a>
-                                                        <a href="medical_records_action.php?action=edit&id=<?php echo $record['id']; ?>" class="btn btn-sm btn-outline-secondary">
+                                                        <a href="medical_record_action.php?action=edit&id=<?php echo $record['id']; ?>" class="btn btn-sm btn-outline-secondary">
                                                             <i class="bx bx-edit-alt me-1"></i>Edit
                                                         </a>
-                                                        <a href="medical_records_action.php?action=delete&id=<?php echo $record['id']; ?>" class="btn btn-sm btn-outline-danger" onclick="return confirm('Are you sure you want to delete this medical record?');">
+                                                        <a href="medical_record_action.php?action=delete&id=<?php echo $record['id']; ?>" class="btn btn-sm btn-outline-danger" onclick="return confirm('Are you sure you want to delete this medical record?');">
                                                             <i class="bx bx-trash me-1"></i>Delete
                                                         </a>
                                                     </div>

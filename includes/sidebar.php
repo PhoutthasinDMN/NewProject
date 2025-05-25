@@ -99,7 +99,7 @@ if ($user_id > 0 && isset($conn)) {
         </li>
 
         <!-- 3. Medical Records (Available for all users) -->
-        <li class="menu-item <?php echo ($current_dir == 'medical_records' || in_array($current_page, ['medical_records', 'medical_records_action', 'medical_record_view'])) ? 'active open' : ''; ?>">
+        <li class="menu-item <?php echo ($current_dir == 'medical_records' || in_array($current_page, ['medical_records', 'medical_record_action', 'medical_record_view'])) ? 'active open' : ''; ?>">
             <a href="javascript:void(0);" class="menu-link menu-toggle">
                 <i class="menu-icon tf-icons bx bx-file-blank"></i>
                 <div>Medical Records</div>
@@ -114,13 +114,13 @@ if ($user_id > 0 && isset($conn)) {
                 ?>
             </a>
             <ul class="menu-sub">
-                <li class="menu-item <?php echo (in_array($current_page, ['medical_records_action', 'medical_record_view']) && (!isset($_GET['action']) || $_GET['action'] == 'list' || $_GET['action'] == 'view')) ? 'active' : ''; ?>">
-                    <a href="<?php echo isset($medical_records_url) ? $medical_records_url : '../medical_records/'; ?>medical_records_action.php" class="menu-link">
+                <li class="menu-item <?php echo (in_array($current_page, ['medical_record_action', 'medical_record_view']) && (!isset($_GET['action']) || $_GET['action'] == 'list' || $_GET['action'] == 'view')) ? 'active' : ''; ?>">
+                    <a href="<?php echo isset($medical_records_url) ? $medical_records_url : '../medical_records/'; ?>medical_record_action.php" class="menu-link">
                         <div>All Records</div>
                     </a>
                 </li>
-                <li class="menu-item <?php echo ($current_page == 'medical_records_action' && (isset($_GET['action']) && $_GET['action'] == 'add')) ? 'active' : ''; ?>">
-                    <a href="<?php echo isset($medical_records_url) ? $medical_records_url : '../medical_records/'; ?>medical_records_action.php?action=add" class="menu-link">
+                <li class="menu-item <?php echo ($current_page == 'medical_record_action' && (isset($_GET['action']) && $_GET['action'] == 'add')) ? 'active' : ''; ?>">
+                    <a href="<?php echo isset($medical_records_url) ? $medical_records_url : '../medical_records/'; ?>medical_record_action.php?action=add" class="menu-link">
                         <div>New Record</div>
                     </a>
                 </li>

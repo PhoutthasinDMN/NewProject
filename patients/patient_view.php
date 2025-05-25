@@ -217,7 +217,7 @@ if (!empty($patient['dob']) && $patient['dob'] != '0000-00-00') {
                                                     <a href="patients_action.php?action=edit&id=<?php echo $patient['id']; ?>" class="btn btn-primary me-2">
                                                         <i class="bx bx-edit-alt me-1"></i> Edit
                                                     </a>
-                                                    <a href="../medical_records/medical_records.php?patient_id=<?php echo $patient['id']; ?>" class="btn btn-info">
+                                                    <a href="../medical_records/medical_record_action?patient_id=<?php echo $patient['id']; ?>" class="btn btn-info">
                                                         <i class="bx bx-file me-1"></i> Medical Records
                                                     </a>
                                                 </div>
@@ -341,7 +341,7 @@ if (!empty($patient['dob']) && $patient['dob'] != '0000-00-00') {
                     <!-- / Content -->
 
                     <!-- Footer -->
-                    <?php include '../dashboard/footer.php'; ?>
+                    <?php include '../includes/footer.php'; ?>
                     <!-- / Footer -->
 
                     <div class="content-backdrop fade"></div>

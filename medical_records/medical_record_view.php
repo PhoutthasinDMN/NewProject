@@ -9,7 +9,7 @@ requireLogin();
 $record_id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
 
 if ($record_id <= 0) {
-    header("Location: medical_records_action.php");
+    header("Location: medical_record_action.php");
     exit;
 }
 
@@ -24,7 +24,7 @@ $stmt->execute();
 $result = $stmt->get_result();
 
 if ($result->num_rows == 0) {
-    header("Location: medical_records_action.php");
+    header("Location: medical_record_action.php");
     exit;
 }
 
@@ -94,10 +94,10 @@ include '../includes/sidebar.php';
                             <button id="exportPdfBtn" class="btn btn-danger me-2">
                                 <i class="bx bx-file-pdf me-1"></i> Export PDF
                             </button>
-                            <a href="medical_records_action.php?action=edit&id=<?php echo $record['id']; ?>" class="btn btn-primary me-2">
+                            <a href="medical_record_action.php?action=edit&id=<?php echo $record['id']; ?>" class="btn btn-primary me-2">
                                 <i class="bx bx-edit me-1"></i> Edit Record
                             </a>
-                            <a href="medical_records_action.php" class="btn btn-outline-secondary">
+                            <a href="medical_record_action.php" class="btn btn-outline-secondary">
                                 <i class="bx bx-arrow-back me-1"></i> Back to List
                             </a>
                         </div>

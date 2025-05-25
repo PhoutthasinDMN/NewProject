@@ -1,5 +1,5 @@
 <?php
-// includes/sidebar.php
+// includes/sidebar.php - Simplified and working version
 $current_page = basename($_SERVER['PHP_SELF'], '.php');
 $current_dir = basename(dirname($_SERVER['PHP_SELF']));
 
@@ -20,6 +20,7 @@ if ($user_id > 0 && isset($conn)) {
     }
 }
 ?>
+
 <!-- Sidebar -->
 <aside id="layout-menu" class="layout-menu menu-vertical menu bg-menu-theme">
     <div class="app-brand demo">
@@ -45,9 +46,6 @@ if ($user_id > 0 && isset($conn)) {
             </span>
             <span class="app-brand-text demo menu-text fw-bolder ms-2">Medical</span>
         </a>
-        <a href="javascript:void(0);" class="layout-menu-toggle menu-link text-large ms-auto d-block d-xl-none">
-            <i class="bx bx-chevron-left bx-sm align-middle"></i>
-        </a>
     </div>
 
     <div class="menu-inner-shadow"></div>
@@ -61,7 +59,7 @@ if ($user_id > 0 && isset($conn)) {
             </a>
         </li>
 
-        <!-- 2. Patients (Available for ALL logged-in users) -->
+        <!-- 2. Patients -->
         <li class="menu-item <?php echo ($current_dir == 'patients' || in_array($current_page, ['patients', 'patient_view', 'patients_action'])) ? 'active open' : ''; ?>">
             <a href="javascript:void(0);" class="menu-link menu-toggle">
                 <i class="menu-icon tf-icons bx bx-group"></i>
@@ -92,13 +90,10 @@ if ($user_id > 0 && isset($conn)) {
                         <div>Add New Patient</div>
                     </a>
                 </li>
-                <?php if (!$isAdmin): ?>
-                
-                <?php endif; ?>
             </ul>
         </li>
 
-        <!-- 3. Medical Records (Available for all users) -->
+        <!-- 3. Medical Records -->
         <li class="menu-item <?php echo ($current_dir == 'medical_records' || in_array($current_page, ['medical_records', 'medical_record_action', 'medical_record_view'])) ? 'active open' : ''; ?>">
             <a href="javascript:void(0);" class="menu-link menu-toggle">
                 <i class="menu-icon tf-icons bx bx-file-blank"></i>
@@ -127,7 +122,7 @@ if ($user_id > 0 && isset($conn)) {
             </ul>
         </li>
 
-        <!-- 4. Appointments (Available for all users) -->
+        <!-- 4. Appointments -->
         <li class="menu-item <?php echo ($current_dir == 'appointments' || in_array($current_page, ['appointments', 'appointment_view', 'appointments_action'])) ? 'active open' : ''; ?>">
             <a href="javascript:void(0);" class="menu-link menu-toggle">
                 <i class="menu-icon tf-icons bx bx-calendar"></i>
@@ -161,7 +156,7 @@ if ($user_id > 0 && isset($conn)) {
             </ul>
         </li>
 
-        <!-- Divider for Admin-only sections -->
+        <!-- Admin-only sections -->
         <?php if ($isAdmin): ?>
         <li class="menu-header small text-uppercase">
             <span class="menu-header-text">Administration</span>
@@ -237,7 +232,7 @@ if ($user_id > 0 && isset($conn)) {
                 // Get user count for badge
                 if (isset($conn)) {
                     $user_count = $conn->query("SELECT COUNT(*) as count FROM users")->fetch_assoc()['count'] ?? 0;
-                    if ($user_count > 1) { // More than 1 user
+                    if ($user_count > 1) {
                         echo '<div class="badge badge-center rounded-pill bg-secondary ms-auto">' . $user_count . '</div>';
                     }
                 }
@@ -314,12 +309,9 @@ if ($user_id > 0 && isset($conn)) {
     </ul>
 </aside>
 
-<!-- SweetAlert2 CDN -->
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-
-<!-- Enhanced CSS for role-based styling -->
+<!-- Simple CSS for sidebar -->
 <style>
-/* Role-based menu styling */
+/* Basic sidebar styles */
 .menu-item .text-success {
     color: #28a745 !important;
     font-size: 0.75rem;
@@ -330,81 +322,6 @@ if ($user_id > 0 && isset($conn)) {
     font-size: 0.75rem;
 }
 
-/* Badge styling */
-.menu-item .badge {
-    font-size: 0.65rem;
-    min-width: 1.25rem;
-    height: 1.25rem;
-    line-height: 1;
-}
-
-/* User vs Admin menu distinction */
-.user-role .menu-item[data-admin-only] {
-    opacity: 0.6;
-    pointer-events: none;
-}
-
-/* Enhanced tooltips for role indicators */
-[title] {
-    position: relative;
-}
-
-/* Menu header styling */
-.menu-header-text {
-    color: #a1acb8 !important;
-    font-weight: 600;
-    letter-spacing: 0.5px;
-}
-
-/* Disabled menu items */
-.menu-link.disabled {
-    pointer-events: none;
-    opacity: 0.7;
-    cursor: default;
-    background: transparent;
-}
-
-.menu-link.disabled:hover {
-    background: transparent;
-}
-
-/* Active state for patients menu */
-.menu-item.active.open > .menu-link {
-    background-color: rgba(105, 108, 255, 0.12) !important;
-    color: #696cff !important;
-}
-
-/* Remove highlight for patients menu */
-
-/* Admin-only sections styling */
-.admin-role .menu-header-text:contains("Administration") {
-    color: #ffc107 !important;
-}
-
-/* Responsive adjustments */
-@media (max-width: 1199.98px) {
-    .layout-menu {
-        transform: translateX(-100%);
-        transition: transform 0.3s ease;
-    }
-    
-    .layout-menu.show {
-        transform: translateX(0);
-    }
-}
-
-/* Animation for role indicators */
-@keyframes roleGlow {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.7; }
-}
-
-.menu-item .text-success,
-.menu-item .text-warning {
-    animation: roleGlow 3s ease-in-out infinite;
-}
-
-/* Enhanced badge styles */
 .badge.bg-primary {
     background: linear-gradient(135deg, #696cff, #5a67d8) !important;
 }
@@ -428,177 +345,26 @@ if ($user_id > 0 && isset($conn)) {
 .badge.bg-secondary {
     background: linear-gradient(135deg, #6c757d, #545b62) !important;
 }
-</style>
 
-<!-- JavaScript for enhanced functionality -->
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    // Auto-expand current menu
-    const activeMenuItem = document.querySelector('.menu-item.active.open');
-    if (activeMenuItem) {
-        const submenu = activeMenuItem.querySelector('.menu-sub');
-        if (submenu) {
-            submenu.style.display = 'block';
-        }
-    }
-
-    // Role-based UI adjustments
-    const isAdmin = <?php echo $isAdmin ? 'true' : 'false'; ?>;
-    
-    if (!isAdmin) {
-        document.body.classList.add('user-role');
-        
-        // Add visual highlight to patients menu for users (removed)
-        const patientsMenu = document.querySelector('[href*="patients"]')?.closest('.menu-item');
-        if (patientsMenu) {
-            patientsMenu.setAttribute('title', 'You have full access to patient management');
-        }
-    } else {
-        document.body.classList.add('admin-role');
-    }
-
-    // Store role info for other scripts
-    window.userRole = {
-        isAdmin: isAdmin,
-        canManagePatients: true, // All users can now manage patients
-        canDeletePatients: isAdmin,
-        canManageUsers: isAdmin
-    };
-
-    // Badge pulse animation on hover
-    const badges = document.querySelectorAll('.badge');
-    badges.forEach(badge => {
-        badge.addEventListener('mouseenter', function() {
-            this.style.transform = 'scale(1.1)';
-            this.style.transition = 'transform 0.2s ease';
-        });
-
-        badge.addEventListener('mouseleave', function() {
-            this.style.transform = 'scale(1)';
-        });
-    });
-
-    // Welcome message based on role
-    console.log(isAdmin ? 
-        '👑 Welcome Administrator! You have full system access.' : 
-        '👤 Welcome User! You can manage patients and medical records.'
-    );
-});
-
-// SweetAlert Logout Confirmation
-function confirmLogout() {
-    Swal.fire({
-        title: 'Confirm Logout',
-        text: 'Are you sure you want to logout?',
-        icon: 'question',
-        showCancelButton: true,
-        confirmButtonColor: '#dc3545',
-        cancelButtonColor: '#6c757d',
-        confirmButtonText: '<i class="bx bx-log-out me-1"></i>Yes, Logout',
-        cancelButtonText: '<i class="bx bx-x me-1"></i>Cancel',
-        reverseButtons: true,
-        customClass: {
-            popup: 'logout-popup',
-            title: 'logout-title',
-            confirmButton: 'logout-confirm-btn',
-            cancelButton: 'logout-cancel-btn'
-        },
-        backdrop: true,
-        allowOutsideClick: false,
-        allowEscapeKey: true,
-        showLoaderOnConfirm: true,
-        preConfirm: () => {
-            return new Promise((resolve) => {
-                // Simulate logout process
-                setTimeout(() => {
-                    resolve();
-                }, 1000);
-            });
-        }
-    }).then((result) => {
-        if (result.isConfirmed) {
-            // Show success message before redirect
-            Swal.fire({
-                title: 'Logging Out...',
-                text: 'Thank you for using Medical System',
-                icon: 'success',
-                timer: 1500,
-                timerProgressBar: true,
-                showConfirmButton: false,
-                customClass: {
-                    popup: 'logout-success-popup'
-                }
-            }).then(() => {
-                // Redirect to logout
-                window.location.href = '<?php echo isset($auth_url) ? $auth_url : "../auth/"; ?>logout.php';
-            });
-        }
-    });
+.menu-header-text {
+    color: #a1acb8 !important;
+    font-weight: 600;
+    letter-spacing: 0.5px;
 }
 
-// Additional SweetAlert styling
-const style = document.createElement('style');
-style.textContent = `
-    /* Custom SweetAlert styling */
-    .logout-popup {
-        border-radius: 15px !important;
-        padding: 20px !important;
-    }
-    
-    .logout-title {
-        color: #dc3545 !important;
-        font-weight: 600 !important;
-    }
-    
-    .logout-confirm-btn {
-        border-radius: 8px !important;
-        font-weight: 500 !important;
-        padding: 10px 20px !important;
-        transition: all 0.3s ease !important;
-    }
-    
-    .logout-confirm-btn:hover {
-        transform: translateY(-1px) !important;
-        box-shadow: 0 4px 15px rgba(220, 53, 69, 0.3) !important;
-    }
-    
-    .logout-cancel-btn {
-        border-radius: 8px !important;
-        font-weight: 500 !important;
-        padding: 10px 20px !important;
-        transition: all 0.3s ease !important;
-    }
-    
-    .logout-cancel-btn:hover {
-        transform: translateY(-1px) !important;
-        box-shadow: 0 4px 15px rgba(108, 117, 125, 0.3) !important;
-    }
-    
-    .logout-success-popup {
-        border-radius: 15px !important;
-    }
-    
-    .swal2-timer-progress-bar {
-        background: linear-gradient(135deg, #28a745, #20c997) !important;
-    }
-    
-    /* Animation for logout icon */
-    @keyframes rotateOut {
-        from { transform: rotate(0deg); }
-        to { transform: rotate(360deg); }
-    }
-    
-    .logout-confirm-btn:hover .bx-log-out {
-        animation: rotateOut 0.5s ease-in-out;
-    }
-    
-    /* Responsive adjustments */
-    @media (max-width: 768px) {
-        .logout-popup {
-            margin: 20px !important;
-            width: calc(100% - 40px) !important;
-        }
-    }
-`;
-document.head.appendChild(style);
-</script>
+.menu-link.disabled {
+    pointer-events: none;
+    opacity: 0.7;
+    cursor: default;
+    background: transparent;
+}
+
+.menu-link.disabled:hover {
+    background: transparent;
+}
+
+.menu-item.active.open > .menu-link {
+    background-color: rgba(105, 108, 255, 0.12) !important;
+    color: #696cff !important;
+}
+</style>

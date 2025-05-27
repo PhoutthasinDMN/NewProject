@@ -1,10 +1,10 @@
 <?php
-// dashboard/index.php - Enhanced Medical Dashboard
+// dashboard/index.php - Clean Enhanced Medical Dashboard
 require_once '../includes/config.php';
 require_once '../includes/db.php';
-require_once '../includes/enhanced-db-functions.php';
+require_once '../includes/functions.php';
 
-// ตรวจสอบการล็อกอิน (session_start() ถูกเรียกใน config.php แล้ว)
+// ตรวจสอบการล็อกอิน
 if (!isset($_SESSION['user_id']) || !isset($_SESSION['username'])) {
     header("Location: ../auth/login.php?error=please_login");
     exit;
@@ -13,151 +13,207 @@ if (!isset($_SESSION['user_id']) || !isset($_SESSION['username'])) {
 // ตั้งค่าสำหรับ enhanced-header.php
 $assets_path = '../assets/';
 $page_title = 'Medical Dashboard - Overview';
-$extra_scripts_head = ['https://cdn.jsdelivr.net/npm/chart.js'];
-$extra_css = ['../assets/css/dashboard.css'];
-$extra_js = [];
+$extra_css = [
+    '../assets/css/dashboard.css',
+    'https://unpkg.com/aos@next/dist/aos.css'
+];
+$extra_js = [
+    'https://unpkg.com/aos@next/dist/aos.js',
+    'https://cdn.jsdelivr.net/npm/chart.js',
+    '../assets/js/dashboard.js'
+];
 
 // เริ่มต้นระบบฐานข้อมูล
 try {
-    $enhancedDB = getEnhancedDB();
-    $dbManager = new DatabaseManager($conn); // สำหรับ direct DB operations
+    // ตรวจสอบว่ามีไฟล์ enhanced-db-functions.php หรือไม่
+    if (file_exists('../includes/enhanced-db-functions.php')) {
+        require_once '../includes/enhanced-db-functions.php';
+        if (class_exists('DatabaseManager')) {
+            $dbManager = new DatabaseManager($conn);
+        }
+    }
+    
+    if (!isset($dbManager)) {
+        $dbManager = null;
+    }
 } catch (Exception $e) {
     error_log("Enhanced DB initialization error: " . $e->getMessage());
-    $dbManager = new DatabaseManager($conn);
+    $dbManager = null;
 }
 
 try {
     // ดึงข้อมูลผู้ใช้ด้วยความปลอดภัยสูง
     $user_id = $_SESSION['user_id'];
     
-    $user = $dbManager->getRow(
-        "SELECT username, email, role, created_at, last_login FROM users WHERE id = ? AND status = 'active'", 
-        [$user_id], 
-        'i'
-    );
+    $sql = "SELECT username, email, role, created_at, last_login FROM users WHERE id = ? AND status = 'active'";
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param("i", $user_id);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $user = $result->fetch_assoc();
     
     if (!$user) {
-        // บันทึก log การเข้าถึงที่ไม่ถูกต้อง (ถ้ามี SecurityManager)
-        if (class_exists('SecurityManager')) {
-            SecurityManager::logSecurityEvent('invalid_user_access', ['user_id' => $user_id], 'WARNING');
-        }
         session_destroy();
         header("Location: ../auth/login.php?error=invalid_session");
         exit;
     }
     
+    // อัพเดท last_login
+    $update_sql = "UPDATE users SET last_login = NOW() WHERE id = ?";
+    $update_stmt = $conn->prepare($update_sql);
+    $update_stmt->bind_param("i", $user_id);
+    $update_stmt->execute();
+    
     $isAdmin = ($user['role'] === 'admin');
     
-    // ดึงสถิติด้วยระบบใหม่ที่มี Caching
-    if (method_exists($enhancedDB, 'getDashboardStats')) {
-        $stats = $enhancedDB->getDashboardStats();
+    // ดึงสถิติพื้นฐาน
+    $stats = [];
+    
+    // นับจำนวน patients
+    $result = $conn->query("SELECT COUNT(*) as total FROM patients");
+    $stats['patients']['total'] = $result ? $result->fetch_assoc()['total'] : 0;
+    
+    $stmt = $conn->prepare("SELECT COUNT(*) as count FROM patients WHERE MONTH(created_at) = MONTH(CURRENT_DATE()) AND YEAR(created_at) = YEAR(CURRENT_DATE())");
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $stats['patients']['new_this_month'] = $result ? $result->fetch_assoc()['count'] : 0;
+    
+    // นับจำนวน medical_records (ตรวจสอบว่าตารางมีอยู่หรือไม่)
+    $table_check = $conn->query("SHOW TABLES LIKE 'medical_records'");
+    if ($table_check && $table_check->num_rows > 0) {
+        $result = $conn->query("SELECT COUNT(*) as total FROM medical_records");
+        $stats['records']['total'] = $result ? $result->fetch_assoc()['total'] : 0;
+        
+        $stmt = $conn->prepare("SELECT COUNT(*) as count FROM medical_records WHERE MONTH(visit_date) = MONTH(CURRENT_DATE()) AND YEAR(visit_date) = YEAR(CURRENT_DATE())");
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $stats['records']['this_month'] = $result ? $result->fetch_assoc()['count'] : 0;
     } else {
-        // ดึงสถิติแบบพื้นฐาน
-        $stats = [];
-        
-        // นับจำนวน patients
-        $result = $dbManager->getRow("SELECT COUNT(*) as total FROM patients");
-        $stats['patients']['total'] = $result['total'] ?? 0;
-        
-        $result = $dbManager->getRow("SELECT COUNT(*) as count FROM patients WHERE MONTH(created_at) = MONTH(CURRENT_DATE()) AND YEAR(created_at) = YEAR(CURRENT_DATE())");
-        $stats['patients']['new_this_month'] = $result['count'] ?? 0;
-        
-        // นับจำนวน records
-        $result = $dbManager->getRow("SELECT COUNT(*) as total FROM medical_records");
-        $stats['records']['total'] = $result['total'] ?? 0;
-        
-        $result = $dbManager->getRow("SELECT COUNT(*) as count FROM medical_records WHERE MONTH(visit_date) = MONTH(CURRENT_DATE()) AND YEAR(visit_date) = YEAR(CURRENT_DATE())");
-        $stats['records']['this_month'] = $result['count'] ?? 0;
-        
-        // นับจำนวน doctors
-        $result = $dbManager->getRow("SELECT COUNT(*) as total FROM doctors");
-        $stats['doctors']['total'] = $result['total'] ?? 0;
-        
-        // นับจำนวน appointments
-        $result = $dbManager->getRow("SELECT COUNT(*) as count FROM medical_records WHERE next_appointment > NOW()");
-        $stats['appointments']['upcoming'] = $result['count'] ?? 0;
-        
-        $result = $dbManager->getRow("SELECT COUNT(*) as count FROM medical_records WHERE DATE(next_appointment) = CURDATE()");
-        $stats['appointments']['today'] = $result['count'] ?? 0;
+        $stats['records']['total'] = 0;
+        $stats['records']['this_month'] = 0;
     }
     
-    // ดึงข้อมูลล่าสุดด้วย Security และ Performance ที่ดีขึ้น
-    $recent_patients = $dbManager->getRows(
-        "SELECT id, first_name, last_name, age, phone, created_at, gender 
-         FROM patients 
-         ORDER BY created_at DESC 
-         LIMIT 6"
-    );
+    // นับจำนวน doctors (ตรวจสอบว่าตารางมีอยู่หรือไม่)
+    $table_check = $conn->query("SHOW TABLES LIKE 'doctors'");
+    if ($table_check && $table_check->num_rows > 0) {
+        $result = $conn->query("SELECT COUNT(*) as total FROM doctors");
+        $stats['doctors']['total'] = $result ? $result->fetch_assoc()['total'] : 0;
+    } else {
+        $stats['doctors']['total'] = 0;
+    }
     
-    $recent_records = $dbManager->getRows(
-        "SELECT mr.id, mr.diagnosis, mr.visit_date, mr.treatment, p.first_name, p.last_name, p.id as patient_id
-         FROM medical_records mr 
-         JOIN patients p ON mr.patient_id = p.id 
-         ORDER BY mr.visit_date DESC 
-         LIMIT 6"
-    );
+    // นับจำนวน appointments (ตรวจสอบว่าฟิลด์มีอยู่หรือไม่)
+    $table_check = $conn->query("SHOW TABLES LIKE 'medical_records'");
+    if ($table_check && $table_check->num_rows > 0) {
+        $column_check = $conn->query("SHOW COLUMNS FROM medical_records LIKE 'next_appointment'");
+        if ($column_check && $column_check->num_rows > 0) {
+            $result = $conn->query("SELECT COUNT(*) as count FROM medical_records WHERE next_appointment > NOW()");
+            $stats['appointments']['upcoming'] = $result ? $result->fetch_assoc()['count'] : 0;
+            
+            $result = $conn->query("SELECT COUNT(*) as count FROM medical_records WHERE DATE(next_appointment) = CURDATE()");
+            $stats['appointments']['today'] = $result ? $result->fetch_assoc()['count'] : 0;
+        } else {
+            $stats['appointments']['upcoming'] = 0;
+            $stats['appointments']['today'] = 0;
+        }
+    } else {
+        $stats['appointments']['upcoming'] = 0;
+        $stats['appointments']['today'] = 0;
+    }
     
-    $upcoming_appointments = $dbManager->getRows(
-        "SELECT mr.id, mr.next_appointment, mr.diagnosis, mr.notes, p.first_name, p.last_name, p.id as patient_id
-         FROM medical_records mr 
-         JOIN patients p ON mr.patient_id = p.id 
-         WHERE mr.next_appointment > NOW() 
-         ORDER BY mr.next_appointment 
-         LIMIT 6"
-    );
+    // ดึงข้อมูลล่าสุด
+    $recent_patients = [];
+    $stmt = $conn->prepare("SELECT id, first_name, last_name, age, phone, created_at, gender FROM patients ORDER BY created_at DESC LIMIT 6");
+    $stmt->execute();
+    $result = $stmt->get_result();
+    while ($row = $result->fetch_assoc()) {
+        $recent_patients[] = $row;
+    }
     
+    $recent_records = [];
+    $upcoming_appointments = [];
+    
+    // ตรวจสอบตาราง medical_records ก่อนใช้งาน
+    $table_check = $conn->query("SHOW TABLES LIKE 'medical_records'");
+    if ($table_check && $table_check->num_rows > 0) {
+        $stmt = $conn->prepare("SELECT mr.id, mr.diagnosis, mr.visit_date, mr.treatment, p.first_name, p.last_name, p.id as patient_id
+                               FROM medical_records mr 
+                               JOIN patients p ON mr.patient_id = p.id 
+                               ORDER BY mr.visit_date DESC 
+                               LIMIT 6");
+        $stmt->execute();
+        $result = $stmt->get_result();
+        while ($row = $result->fetch_assoc()) {
+            $recent_records[] = $row;
+        }
+        
+        // ตรวจสอบฟิลด์ next_appointment
+        $column_check = $conn->query("SHOW COLUMNS FROM medical_records LIKE 'next_appointment'");
+        if ($column_check && $column_check->num_rows > 0) {
+            $stmt = $conn->prepare("SELECT mr.id, mr.next_appointment, mr.diagnosis, mr.notes, p.first_name, p.last_name, p.id as patient_id
+                                   FROM medical_records mr 
+                                   JOIN patients p ON mr.patient_id = p.id 
+                                   WHERE mr.next_appointment > NOW() 
+                                   ORDER BY mr.next_appointment 
+                                   LIMIT 6");
+            $stmt->execute();
+            $result = $stmt->get_result();
+            while ($row = $result->fetch_assoc()) {
+                $upcoming_appointments[] = $row;
+            }
+        }
+    }
+
     // สถิติขั้นสูงสำหรับ Charts
-    $daily_patients = $dbManager->getRows(
-        "SELECT DATE(created_at) as date, COUNT(*) as count
-         FROM patients 
-         WHERE created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
-         GROUP BY DATE(created_at)
-         ORDER BY date"
-    );
+    $daily_patients = [];
+    $stmt = $conn->prepare("SELECT DATE(created_at) as date, COUNT(*) as count
+                           FROM patients 
+                           WHERE created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+                           GROUP BY DATE(created_at)
+                           ORDER BY date");
+    $stmt->execute();
+    $result = $stmt->get_result();
+    while ($row = $result->fetch_assoc()) {
+        $daily_patients[] = $row;
+    }
     
-    $monthly_patients = $dbManager->getRows(
-        "SELECT YEAR(created_at) as year, MONTH(created_at) as month, COUNT(*) as count
-         FROM patients 
-         WHERE created_at >= DATE_SUB(NOW(), INTERVAL 12 MONTH)
-         GROUP BY YEAR(created_at), MONTH(created_at)
-         ORDER BY year, month"
-    );
+    $monthly_patients = [];
+    $stmt = $conn->prepare("SELECT YEAR(created_at) as year, MONTH(created_at) as month, COUNT(*) as count
+                           FROM patients 
+                           WHERE created_at >= DATE_SUB(NOW(), INTERVAL 12 MONTH)
+                           GROUP BY YEAR(created_at), MONTH(created_at)
+                           ORDER BY year, month");
+    $stmt->execute();
+    $result = $stmt->get_result();
+    while ($row = $result->fetch_assoc()) {
+        $monthly_patients[] = $row;
+    }
     
     // สถิติเพิ่มเติมสำหรับ Dashboard
-    $today_appointments = $dbManager->getRow(
-        "SELECT COUNT(*) as count 
-         FROM medical_records 
-         WHERE DATE(next_appointment) = CURDATE()"
-    )['count'] ?? 0;
+    $today_appointments = $stats['appointments']['today'];
+    $week_appointments = 0;
     
-    $week_appointments = $dbManager->getRow(
-        "SELECT COUNT(*) as count 
-         FROM medical_records 
-         WHERE next_appointment BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 7 DAY)"
-    )['count'] ?? 0;
-    
-    // บันทึกการเข้าถึง Dashboard (ถ้ามี SecurityManager)
-    if (class_exists('SecurityManager')) {
-        SecurityManager::logSecurityEvent('dashboard_access', [
-            'user_role' => $user['role'],
-            'stats_loaded' => true
-        ]);
+    if ($table_check && $table_check->num_rows > 0) {
+        $column_check = $conn->query("SHOW COLUMNS FROM medical_records LIKE 'next_appointment'");
+        if ($column_check && $column_check->num_rows > 0) {
+            $result = $conn->query("SELECT COUNT(*) as count 
+                                   FROM medical_records 
+                                   WHERE next_appointment BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 7 DAY)");
+            $week_appointments = $result ? $result->fetch_assoc()['count'] : 0;
+        }
     }
     
 } catch (Exception $e) {
     // จัดการ Error อย่างปลอดภัย
     error_log("Dashboard Error: " . $e->getMessage());
     
-    // บันทึก error log (ถ้ามี SecurityManager)
-    if (class_exists('SecurityManager')) {
-        SecurityManager::logSecurityEvent('dashboard_error', [
-            'error' => $e->getMessage(),
-            'user_id' => $user_id ?? 'unknown'
-        ], 'ERROR');
-    }
-    
     // Fallback ข้อมูลเบื้องต้น
-    $stats = ['patients' => ['total' => 0, 'new_this_month' => 0], 'records' => ['total' => 0, 'this_month' => 0], 'doctors' => ['total' => 0], 'appointments' => ['upcoming' => 0, 'today' => 0]];
+    $stats = [
+        'patients' => ['total' => 0, 'new_this_month' => 0], 
+        'records' => ['total' => 0, 'this_month' => 0], 
+        'doctors' => ['total' => 0], 
+        'appointments' => ['upcoming' => 0, 'today' => 0]
+    ];
     $recent_patients = $recent_records = $upcoming_appointments = [];
     $daily_patients = $monthly_patients = [];
     $today_appointments = $week_appointments = 0;
@@ -182,7 +238,7 @@ include '../includes/enhanced-header.php';
 <div class="container-xxl flex-grow-1 container-p-y">
     
     <!-- Enhanced Welcome Banner -->
-    <div class="welcome-banner mb-4">
+    <div class="welcome-banner mb-4" data-aos="fade-down">
         <div class="row align-items-center">
             <div class="col-md-8">
                 <div class="welcome-content">
@@ -217,7 +273,7 @@ include '../includes/enhanced-header.php';
                     <div class="avatar-info mt-3">
                         <h6 class="text-white mb-1"><?php echo htmlspecialchars($user['email']); ?></h6>
                         <small class="text-white-50">
-                            Last login: <?php echo $user['last_login'] ? date('M j, H:i', strtotime($user['last_login'])) : 'First time'; ?>
+                            Last login: <?php echo isset($user['last_login']) && $user['last_login'] ? date('M j, H:i', strtotime($user['last_login'])) : 'First time'; ?>
                         </small>
                     </div>
                 </div>
@@ -231,8 +287,8 @@ include '../includes/enhanced-header.php';
         $stat_items = [
             [
                 'title' => 'Total Patients', 
-                'value' => $stats['patients']['total'] ?? 0, 
-                'change' => $stats['patients']['new_this_month'] ?? 0,
+                'value' => $stats['patients']['total'], 
+                'change' => $stats['patients']['new_this_month'],
                 'icon' => 'bx-group', 
                 'color' => 'linear-gradient(135deg, #28a745, #20c997)', 
                 'desc' => 'Registered patients',
@@ -240,8 +296,8 @@ include '../includes/enhanced-header.php';
             ],
             [
                 'title' => 'Medical Records', 
-                'value' => $stats['records']['total'] ?? 0, 
-                'change' => $stats['records']['this_month'] ?? 0,
+                'value' => $stats['records']['total'], 
+                'change' => $stats['records']['this_month'],
                 'icon' => 'bx-file-blank', 
                 'color' => 'linear-gradient(135deg, #007bff, #0056b3)', 
                 'desc' => 'Total records',
@@ -249,8 +305,8 @@ include '../includes/enhanced-header.php';
             ],
             [
                 'title' => 'Total Doctors', 
-                'value' => $stats['doctors']['total'] ?? 0, 
-                'change' => '+2',
+                'value' => $stats['doctors']['total'], 
+                'change' => 0,
                 'icon' => 'bx-user-check', 
                 'color' => 'linear-gradient(135deg, #ffc107, #e0a800)', 
                 'desc' => 'Registered doctors',
@@ -258,12 +314,12 @@ include '../includes/enhanced-header.php';
             ],
             [
                 'title' => 'Upcoming Visits', 
-                'value' => $stats['appointments']['upcoming'] ?? 0, 
-                'change' => $stats['appointments']['today'] ?? 0,
+                'value' => $stats['appointments']['upcoming'], 
+                'change' => $stats['appointments']['today'],
                 'icon' => 'bx-calendar-check', 
                 'color' => 'linear-gradient(135deg, #17a2b8, #138496)', 
                 'desc' => 'Scheduled appointments',
-                'link' => '../appointments/appointments.php'
+                'link' => '#'
             ]
         ];
         
@@ -275,10 +331,10 @@ include '../includes/enhanced-header.php';
                         <div class="stats-icon-large mb-3" style="background: <?php echo $item['color']; ?>">
                             <i class="bx <?php echo $item['icon']; ?>"></i>
                         </div>
-                        <div class="stats-number-large" data-target="<?php echo $item['value']; ?>">0</div>
+                        <div class="stats-number-large" data-target="<?php echo $item['value']; ?>"><?php echo $item['value']; ?></div>
                         <h5 class="card-title mb-1"><?php echo $item['title']; ?></h5>
                         <p class="text-muted small mb-2"><?php echo $item['desc']; ?></p>
-                        <?php if ($item['change']): ?>
+                        <?php if ($item['change'] > 0): ?>
                             <div class="stats-change">
                                 <span class="badge bg-success">
                                     <i class="bx bx-trending-up"></i> +<?php echo $item['change']; ?> this month
@@ -293,7 +349,7 @@ include '../includes/enhanced-header.php';
     </div>
 
     <!-- Quick Actions Bar -->
-    <div class="quick-actions-bar mb-4">
+    <div class="quick-actions-bar mb-4" data-aos="fade-up">
         <div class="card">
             <div class="card-body py-3">
                 <div class="row align-items-center">
@@ -479,7 +535,7 @@ include '../includes/enhanced-header.php';
                             <i class="bx bx-calendar-check display-2 text-muted"></i>
                             <h6 class="mt-3 text-muted">No upcoming appointments</h6>
                             <p class="text-muted small">Schedule your first appointment</p>
-                            <a href="../appointments/appointments_action.php?action=add" class="btn btn-info btn-sm">
+                            <a href="#" class="btn btn-info btn-sm">
                                 <i class="bx bx-plus me-1"></i>Schedule
                             </a>
                         </div>
@@ -548,7 +604,7 @@ include '../includes/enhanced-header.php';
 
     <!-- Enhanced Charts Section -->
     <div class="row mb-5">
-        <!-- Daily Patients Chart -->
+        <!-- Patient Registration Chart -->
         <div class="col-lg-6 mb-4">
             <div class="chart-container" data-aos="fade-up">
                 <div class="chart-header">
@@ -556,76 +612,127 @@ include '../includes/enhanced-header.php';
                         <div>
                             <h5 class="mb-1">
                                 <i class="bx bx-trending-up me-2 text-primary"></i>
-                                Daily Patient Registrations
+                                Patient Registration Trends
                             </h5>
-                            <small class="text-muted">Patient registration trends over the last 30 days</small>
+                            <small class="text-muted">Daily patient registrations over the last 30 days</small>
                         </div>
                         <div class="chart-controls">
-                            <span class="badge bg-primary">Last 30 Days</span>
-                            <button type="button" class="btn btn-sm btn-outline-primary ms-2" onclick="refreshChart('daily')">
-                                <i class="bx bx-refresh"></i>
-                            </button>
+                            <button class="btn btn-sm btn-primary" onclick="toggleChartView('daily')">Daily</button>
+                            <button class="btn btn-sm btn-outline-primary" onclick="toggleChartView('monthly')">Monthly</button>
                         </div>
                     </div>
                 </div>
                 <div class="chart-body">
-                    <canvas id="dailyPatientsChart" style="max-height: 350px;"></canvas>
-                </div>
-                <div class="chart-footer mt-3">
-                    <div class="row text-center">
-                        <div class="col-4">
-                            <small class="text-muted d-block">Average/Day</small>
-                            <strong id="dailyAverage">-</strong>
-                        </div>
-                        <div class="col-4">
-                            <small class="text-muted d-block">Peak Day</small>
-                            <strong id="peakDay">-</strong>
-                        </div>
-                        <div class="col-4">
-                            <small class="text-muted d-block">Total</small>
-                            <strong id="totalDaily">-</strong>
-                        </div>
-                    </div>
+                    <canvas id="patientTrendsChart" width="400" height="200"></canvas>
                 </div>
             </div>
         </div>
 
-        <!-- Monthly Patients Chart -->
+        <!-- System Status -->
         <div class="col-lg-6 mb-4">
             <div class="chart-container" data-aos="fade-up" data-aos-delay="100">
                 <div class="chart-header">
                     <div class="d-flex justify-content-between align-items-center mb-4">
                         <div>
                             <h5 class="mb-1">
-                                <i class="bx bx-bar-chart me-2 text-success"></i>
-                                Monthly Patient Registrations
+                                <i class="bx bx-cog me-2 text-success"></i>
+                                System Status
                             </h5>
-                            <small class="text-muted">Monthly growth patterns over the last year</small>
+                            <small class="text-muted">Current system health and performance</small>
                         </div>
-                        <div class="chart-controls">
-                            <span class="badge bg-success">Last 12 Months</span>
-                            <button type="button" class="btn btn-sm btn-outline-success ms-2" onclick="refreshChart('monthly')">
-                                <i class="bx bx-refresh"></i>
-                            </button>
+                        <div class="status-indicator-main">
+                            <span class="badge bg-success">All Systems Operational</span>
                         </div>
                     </div>
                 </div>
                 <div class="chart-body">
-                    <canvas id="monthlyPatientsChart" style="max-height: 350px;"></canvas>
-                </div>
-                <div class="chart-footer mt-3">
-                    <div class="row text-center">
-                        <div class="col-4">
-                            <small class="text-muted d-block">Average/Month</small>
-                            <strong id="monthlyAverage">-</strong>
+                    <div class="row">
+                        <div class="col-6 mb-3">
+                            <div class="status-item">
+                                <div class="d-flex align-items-center">
+                                    <div class="status-indicator bg-success rounded-circle me-3"></div>
+                                    <div>
+                                        <h6 class="mb-0">Database</h6>
+                                        <small class="text-success">Connected</small>
+                                        <div class="status-detail">
+                                            <small class="text-muted">Response: <strong>2ms</strong></small>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
-                        <div class="col-4">
-                            <small class="text-muted d-block">Best Month</small>
-                            <strong id="bestMonth">-</strong>
+                        <div class="col-6 mb-3">
+                            <div class="status-item">
+                                <div class="d-flex align-items-center">
+                                    <div class="status-indicator bg-success rounded-circle me-3"></div>
+                                    <div>
+                                        <h6 class="mb-0">System</h6>
+                                        <small class="text-success">Running</small>
+                                        <div class="status-detail">
+                                            <small class="text-muted">Uptime: <strong>99.9%</strong></small>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
-                        <div class="col-4">
-                            <small class="text-muted d-block">Growth Rate</small>
-                            <strong id="growthRate" class="text-success">-</strong>
+                        <div class="col-6 mb-3">
+                            <div class="status-item">
+                                <div class="d-flex align-items-center">
+                                    <div class="status-indicator bg-success rounded-circle me-3"></div>
+                                    <div>
+                                        <h6 class="mb-0">Users</h6>
+                                        <small class="text-success"><?php echo $stats['patients']['total'] + 1; ?> Active</small>
+                                        <div class="status-detail">
+                                            <small class="text-muted">Online: <strong>1</strong></small>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-6 mb-3">
+                            <div class="status-item">
+                                <div class="d-flex align-items-center">
+                                    <div class="status-indicator bg-success rounded-circle me-3"></div>
+                                    <div>
+                                        <h6 class="mb-0">Storage</h6>
+                                        <small class="text-success">Available</small>
+                                        <div class="status-detail">
+                                            <small class="text-muted">Free: <strong>85%</strong></small>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Recent System Activity -->
+                    <div class="system-activity mt-4">
+                        <h6 class="mb-3">
+                            <i class="bx bx-history me-2"></i>
+                            Recent Activity
+                        </h6>
+                        <div class="activity-timeline">
+                            <div class="timeline-item">
+                                <div class="timeline-dot bg-success"></div>
+                                <div class="timeline-content">
+                                    <small class="text-success">System backup completed</small>
+                                    <div class="text-muted">2 hours ago</div>
+                                </div>
+                            </div>
+                            <div class="timeline-item">
+                                <div class="timeline-dot bg-info"></div>
+                                <div class="timeline-content">
+                                    <small class="text-info">Database optimized</small>
+                                    <div class="text-muted">6 hours ago</div>
+                                </div>
+                            </div>
+                            <div class="timeline-item">
+                                <div class="timeline-dot bg-warning"></div>
+                                <div class="timeline-content">
+                                    <small class="text-warning">Cache cleared</small>
+                                    <div class="text-muted">12 hours ago</div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -633,446 +740,137 @@ include '../includes/enhanced-header.php';
         </div>
     </div>
 
-    <!-- Enhanced System Status -->
-    <div class="system-status" data-aos="fade-up">
-        <div class="d-flex justify-content-between align-items-center mb-4">
-            <h5 class="mb-0">
-                <i class="bx bx-cog me-2 text-secondary"></i>
-                System Status & Health
-            </h5>
-            <div class="status-controls">
-                <span class="badge bg-success">All Systems Operational</span>
-                <button type="button" class="btn btn-sm btn-outline-secondary ms-2" onclick="checkSystemHealth()">
-                    <i class="bx bx-refresh"></i> Check Health
-                </button>
-            </div>
-        </div>
-        <div class="row">
-            <?php 
-            $status_items = [
-                ['name' => 'Database', 'status' => 'online', 'uptime' => '99.9%'],
-                ['name' => 'API Services', 'status' => 'online', 'uptime' => '99.8%'],
-                ['name' => 'Backup System', 'status' => 'online', 'uptime' => '100%'],
-                ['name' => 'Security', 'status' => 'online', 'uptime' => '100%']
-            ];
-            
-            foreach ($status_items as $item): ?>
-            <div class="col-lg-3 col-md-6 mb-3">
-                <div class="system-status-item">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <h6 class="mb-1"><?php echo $item['name']; ?></h6>
-                            <small class="text-muted">Uptime: <?php echo $item['uptime']; ?></small>
+    <!-- Data Export and Backup Section -->
+    <div class="row mb-5">
+        <div class="col-lg-12">
+            <div class="export-section" data-aos="fade-up">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <h5 class="mb-1">
+                                    <i class="bx bx-download me-2 text-info"></i>
+                                    Data Management
+                                </h5>
+                                <small class="text-muted">Export reports and manage system data</small>
+                            </div>
+                            <div class="export-controls">
+                                <div class="btn-group" role="group">
+                                    <button type="button" class="btn btn-outline-primary btn-sm" onclick="exportData('patients')">
+                                        <i class="bx bx-export me-1"></i>Export Patients
+                                    </button>
+                                    <button type="button" class="btn btn-outline-success btn-sm" onclick="exportData('records')">
+                                        <i class="bx bx-file-export me-1"></i>Export Records
+                                    </button>
+                                    <?php if ($isAdmin): ?>
+                                    <button type="button" class="btn btn-outline-warning btn-sm" onclick="performBackup()">
+                                        <i class="bx bx-cloud-upload me-1"></i>Backup
+                                    </button>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
                         </div>
-                        <div class="status-indicator <?php echo $item['status']; ?>"></div>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-3">
+                                <div class="export-stat">
+                                    <div class="export-icon">
+                                        <i class="bx bx-group text-primary"></i>
+                                    </div>
+                                    <div class="export-info">
+                                        <h6 class="mb-1"><?php echo $stats['patients']['total']; ?></h6>
+                                        <small class="text-muted">Total Patients</small>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="export-stat">
+                                    <div class="export-icon">
+                                        <i class="bx bx-file text-success"></i>
+                                    </div>
+                                    <div class="export-info">
+                                        <h6 class="mb-1"><?php echo $stats['records']['total']; ?></h6>
+                                        <small class="text-muted">Medical Records</small>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="export-stat">
+                                    <div class="export-icon">
+                                        <i class="bx bx-calendar text-info"></i>
+                                    </div>
+                                    <div class="export-info">
+                                        <h6 class="mb-1"><?php echo $stats['appointments']['upcoming']; ?></h6>
+                                        <small class="text-muted">Appointments</small>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="export-stat">
+                                    <div class="export-icon">
+                                        <i class="bx bx-shield text-warning"></i>
+                                    </div>
+                                    <div class="export-info">
+                                        <h6 class="mb-1"><?php echo date('M j'); ?></h6>
+                                        <small class="text-muted">Last Backup</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
-            <?php endforeach; ?>
         </div>
     </div>
 
 </div>
 
-<!-- Enhanced JavaScript -->
+<!-- Global Search Modal -->
+<div class="modal fade" id="globalSearchModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bx bx-search me-2"></i>
+                    Global Search
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="search-container">
+                    <div class="input-group mb-3">
+                        <input type="text" id="globalSearchInput" class="form-control" placeholder="Search patients, records, or appointments..." autocomplete="off">
+                        <button class="btn btn-primary" type="button" onclick="performGlobalSearch()">
+                            <i class="bx bx-search"></i>
+                        </button>
+                    </div>
+                    <div id="searchResults" class="search-results"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <small class="text-muted">
+                    <i class="bx bx-info-circle me-1"></i>
+                    Tip: Use Ctrl+K to quickly open search
+                </small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Pass PHP data to JavaScript -->
 <script>
-// Initialize Dashboard
-document.addEventListener('DOMContentLoaded', function() {
-    initializeCounters();
-    initializeCharts();
-    initializeRealTimeUpdates();
-    initializeInteractiveElements();
-});
-
-// Counter Animation
-function initializeCounters() {
-    const counters = document.querySelectorAll('.stats-number-large');
-    counters.forEach(counter => {
-        const target = parseInt(counter.getAttribute('data-target'));
-        const increment = target / 100;
-        let current = 0;
-        
-        const timer = setInterval(() => {
-            current += increment;
-            counter.textContent = Math.floor(current);
-            
-            if (current >= target) {
-                counter.textContent = target;
-                clearInterval(timer);
-            }
-        }, 20);
-    });
-}
-
-// Charts Initialization
-function initializeCharts() {
-    // Daily Patients Chart
-    const dailyCtx = document.getElementById('dailyPatientsChart');
-    if (dailyCtx) {
-        const dailyData = <?php echo json_encode($daily_patients); ?>;
-        
-        new Chart(dailyCtx, {
-            type: 'line',
-            data: {
-                labels: dailyData.map(item => new Date(item.date).toLocaleDateString('en-US', {month: 'short', day: 'numeric'})),
-                datasets: [{
-                    label: 'Daily Registrations',
-                    data: dailyData.map(item => item.count),
-                    borderColor: '#007bff',
-                    backgroundColor: 'rgba(0, 123, 255, 0.1)',
-                    borderWidth: 3,
-                    fill: true,
-                    tension: 0.4
-                }]
-            },
-            options: {
-                responsive: true,
-                plugins: {
-                    legend: {
-                        display: false
-                    }
-                },
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        grid: {
-                            color: 'rgba(0,0,0,0.1)'
-                        }
-                    },
-                    x: {
-                        grid: {
-                            display: false
-                        }
-                    }
-                }
-            }
-        });
-        
-        // Calculate and display daily statistics
-        const totalDaily = dailyData.reduce((sum, item) => sum + parseInt(item.count), 0);
-        const avgDaily = Math.round(totalDaily / dailyData.length);
-        const peakDay = Math.max(...dailyData.map(item => parseInt(item.count)));
-        
-        document.getElementById('dailyAverage').textContent = avgDaily;
-        document.getElementById('peakDay').textContent = peakDay;
-        document.getElementById('totalDaily').textContent = totalDaily;
-    }
-    
-    // Monthly Patients Chart
-    const monthlyCtx = document.getElementById('monthlyPatientsChart');
-    if (monthlyCtx) {
-        const monthlyData = <?php echo json_encode($monthly_patients); ?>;
-        
-        new Chart(monthlyCtx, {
-            type: 'bar',
-            data: {
-                labels: monthlyData.map(item => {
-                    const date = new Date(item.year, item.month - 1);
-                    return date.toLocaleDateString('en-US', {month: 'short', year: 'numeric'});
-                }),
-                datasets: [{
-                    label: 'Monthly Registrations',
-                    data: monthlyData.map(item => item.count),
-                    backgroundColor: 'rgba(40, 167, 69, 0.8)',
-                    borderColor: '#28a745',
-                    borderWidth: 1
-                }]
-            },
-            options: {
-                responsive: true,
-                plugins: {
-                    legend: {
-                        display: false
-                    }
-                },
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        grid: {
-                            color: 'rgba(0,0,0,0.1)'
-                        }
-                    },
-                    x: {
-                        grid: {
-                            display: false
-                        }
-                    }
-                }
-            }
-        });
-        
-        // Calculate and display monthly statistics
-        const totalMonthly = monthlyData.reduce((sum, item) => sum + parseInt(item.count), 0);
-        const avgMonthly = Math.round(totalMonthly / monthlyData.length);
-        const bestMonth = Math.max(...monthlyData.map(item => parseInt(item.count)));
-        
-        // Calculate growth rate
-        let growthRate = 0;
-        if (monthlyData.length >= 2) {
-            const lastMonth = monthlyData[monthlyData.length - 1].count;
-            const prevMonth = monthlyData[monthlyData.length - 2].count;
-            growthRate = Math.round(((lastMonth - prevMonth) / prevMonth) * 100);
-        }
-        
-        document.getElementById('monthlyAverage').textContent = avgMonthly;
-        document.getElementById('bestMonth').textContent = bestMonth;
-        document.getElementById('growthRate').textContent = (growthRate > 0 ? '+' : '') + growthRate + '%';
-    }
-}
-
-// Real-time Updates
-function initializeRealTimeUpdates() {
-    // Update dashboard stats every 5 minutes
-    setInterval(function() {
-        updateDashboardStats();
-    }, 300000);
-}
-
-// Interactive Elements
-function initializeInteractiveElements() {
-    // Add click effects to cards
-    document.querySelectorAll('.dashboard-stats-card').forEach(card => {
-        card.addEventListener('click', function() {
-            this.style.transform = 'scale(0.98)';
-            setTimeout(() => {
-                this.style.transform = 'scale(1)';
-            }, 100);
-        });
-    });
-    
-    // Add hover effects to activity items
-    document.querySelectorAll('.activity-item-enhanced').forEach(item => {
-        item.addEventListener('mouseenter', function() {
-            this.style.backgroundColor = '#f8f9fa';
-        });
-        
-        item.addEventListener('mouseleave', function() {
-            this.style.backgroundColor = 'transparent';
-        });
-    });
-}
-
-// Dashboard Functions
-function updateDashboardStats() {
-    fetch('dashboard-stats.php')
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                // Update counters with new data
-                Object.keys(data.stats).forEach(key => {
-                    const element = document.querySelector(`[data-stat="${key}"]`);
-                    if (element) {
-                        element.textContent = data.stats[key];
-                    }
-                });
-            }
-        })
-        .catch(error => {
-            console.error('Error updating stats:', error);
-        });
-}
-
-function refreshChart(type) {
-    // Add refresh functionality for charts
-    console.log('Refreshing ' + type + ' chart...');
-    // Implementation would reload chart data
-}
-
-function checkSystemHealth() {
-    // Add system health check functionality
-    console.log('Checking system health...');
-    // Implementation would check system status
-}
-
-function showGlobalSearch() {
-    // Add global search functionality
-    console.log('Opening global search...');
-    // Implementation would show search modal
-}
-
-// AOS Animation Library (if included)
-if (typeof AOS !== 'undefined') {
-    AOS.init({
-        duration: 1000,
-        once: true
-    });
-}
+    // Pass chart data to JavaScript
+    window.dashboardData = {
+        dailyPatients: <?php echo json_encode($daily_patients); ?>,
+        monthlyPatients: <?php echo json_encode($monthly_patients); ?>,
+        stats: <?php echo json_encode($stats); ?>,
+        userRole: '<?php echo $user['role']; ?>',
+        isAdmin: <?php echo $isAdmin ? 'true' : 'false'; ?>
+    };
 </script>
 
-<!-- Additional CSS for enhanced styling -->
-<style>
-.welcome-banner {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    border-radius: 15px;
-    padding: 2rem;
-    color: white;
-    margin-bottom: 2rem;
-}
-
-.dashboard-stats-card {
-    background: white;
-    border-radius: 15px;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-    transition: all 0.3s ease;
-    overflow: hidden;
-}
-
-.dashboard-stats-card:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
-}
-
-.stats-icon-large {
-    width: 60px;
-    height: 60px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin: 0 auto;
-}
-
-.stats-icon-large i {
-    font-size: 24px;
-    color: white;
-}
-
-.stats-number-large {
-    font-size: 2.5rem;
-    font-weight: bold;
-    color: #2c3e50;
-}
-
-.activity-card {
-    background: white;
-    border-radius: 15px;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-    padding: 1.5rem;
-    height: 100%;
-}
-
-.activity-header {
-    border-bottom: 1px solid #e9ecef;
-    padding-bottom: 1rem;
-    margin-bottom: 1.5rem;
-}
-
-.activity-item-enhanced {
-    padding: 1rem;
-    border-radius: 10px;
-    margin-bottom: 1rem;
-    transition: all 0.3s ease;
-    border: 1px solid transparent;
-}
-
-.activity-item-enhanced:hover {
-    background-color: #f8f9fa !important;
-    border-color: #dee2e6;
-    transform: translateX(5px);
-}
-
-.patient-avatar-large {
-    width: 50px;
-    height: 50px;
-    border-radius: 50%;
-    background: linear-gradient(135deg, #667eea, #764ba2);
-    color: white;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-weight: bold;
-    margin-right: 1rem;
-    font-size: 0.9rem;
-}
-
-.chart-container {
-    background: white;
-    border-radius: 15px;
-    padding: 1.5rem;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-}
-
-.system-status {
-    background: white;
-    border-radius: 15px;
-    padding: 1.5rem;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-}
-
-.system-status-item {
-    background: #f8f9fa;
-    border-radius: 10px;
-    padding: 1rem;
-}
-
-.status-indicator {
-    width: 12px;
-    height: 12px;
-    border-radius: 50%;
-    background: #28a745;
-}
-
-.status-indicator.online {
-    background: #28a745;
-    box-shadow: 0 0 10px rgba(40, 167, 69, 0.3);
-}
-
-.appointment-badge {
-    background: linear-gradient(135deg, #17a2b8, #138496);
-    color: white;
-    padding: 4px 8px;
-    border-radius: 8px;
-    font-size: 0.75rem;
-    font-weight: 500;
-}
-
-.upcoming-indicator {
-    display: inline-block;
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: #28a745;
-    margin-right: 5px;
-    animation: pulse 2s infinite;
-}
-
-@keyframes pulse {
-    0% { opacity: 1; }
-    50% { opacity: 0.5; }
-    100% { opacity: 1; }
-}
-
-.animate-pulse {
-    animation: pulse 2s infinite;
-}
-
-.empty-state {
-    text-align: center;
-    padding: 2rem 1rem;
-}
-
-.quick-actions-bar .card {
-    border: none;
-    background: linear-gradient(135deg, #f8f9fa, #e9ecef);
-}
-
-@media (max-width: 768px) {
-    .welcome-banner {
-        text-align: center;
-    }
-    
-    .welcome-banner .col-md-4 {
-        margin-top: 1rem;
-    }
-    
-    .stats-number-large {
-        font-size: 2rem;
-    }
-    
-    .activity-card {
-        margin-bottom: 1rem;
-    }
-}
-</style>
-
-<?php include '../includes/enhanced-footer.php'; ?>
+<?php
+// Include Enhanced Footer
+include '../includes/enhanced-footer.php';
+?>

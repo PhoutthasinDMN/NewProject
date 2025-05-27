@@ -1,0 +1,282 @@
+/* ================================================= */
+/* UNIFIED VARIABLES - Medical System */
+/* ================================================= */
+
+:root {
+  /* ================================================= */
+  /* PRIMARY COLOR SYSTEM */
+  /* ================================================= */
+  --primary: #696cff;
+  --primary-dark: #5a67d8;
+  --primary-light: #8b92ff;
+  --primary-rgb: 105, 108, 255;
+  
+  --secondary: #8592a3;
+  --secondary-dark: #6c757d;
+  --secondary-light: #adb5bd;
+  
+  /* ================================================= */
+  /* SEMANTIC COLORS */
+  /* ================================================= */
+  --success: #71dd37;
+  --success-dark: #5cb85c;
+  --success-light: #d4edda;
+  --success-rgb: 113, 221, 55;
+  
+  --info: #03c3ec;
+  --info-dark: #17a2b8;
+  --info-light: #d1ecf1;
+  --info-rgb: 3, 195, 236;
+  
+  --warning: #ffab00;
+  --warning-dark: #f39c12;
+  --warning-light: #fff3cd;
+  --warning-rgb: 255, 171, 0;
+  
+  --danger: #ff3e1d;
+  --danger-dark: #e74c3c;
+  --danger-light: #f8d7da;
+  --danger-rgb: 255, 62, 29;
+  
+  /* ================================================= */
+  /* NEUTRAL COLORS */
+  /* ================================================= */
+  --dark: #233446;
+  --light: #f4f5fb;
+  --white: #ffffff;
+  --black: #000000;
+  
+  --gray-100: #f8f9fa;
+  --gray-200: #e9ecef;
+  --gray-300: #dee2e6;
+  --gray-400: #ced4da;
+  --gray-500: #adb5bd;
+  --gray-600: #6c757d;
+  --gray-700: #495057;
+  --gray-800: #343a40;
+  --gray-900: #212529;
+  
+  /* ================================================= */
+  /* MEDICAL SPECIFIC COLORS */
+  /* ================================================= */
+  --medical-blue: #4c84ff;
+  --medical-green: #00d4aa;
+  --medical-red: #ff4757;
+  --medical-orange: #ffa726;
+  --medical-purple: #9c27b0;
+  
+  /* ================================================= */
+  /* LAYOUT DIMENSIONS */
+  /* ================================================= */
+  --sidebar-width: 260px;
+  --sidebar-collapsed-width: 80px;
+  --navbar-height: 64px;
+  --footer-height: 60px;
+  
+  /* Breakpoints */
+  --layout-breakpoint: 1200px;
+  --mobile-breakpoint: 768px;
+  --tablet-breakpoint: 992px;
+  
+  /* ================================================= */
+  /* SPACING SYSTEM */
+  /* ================================================= */
+  --spacing-xs: 0.25rem;    /* 4px */
+  --spacing-sm: 0.5rem;     /* 8px */
+  --spacing-md: 1rem;       /* 16px */
+  --spacing-lg: 1.5rem;     /* 24px */
+  --spacing-xl: 2rem;       /* 32px */
+  --spacing-2xl: 3rem;      /* 48px */
+  --spacing-3xl: 4rem;      /* 64px */
+  
+  /* ================================================= */
+  /* TYPOGRAPHY */
+  /* ================================================= */
+  --font-family: 'Public Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-family-mono: 'Fira Code', Monaco, 'Cascadia Code', monospace;
+  
+  --font-size-xs: 0.75rem;   /* 12px */
+  --font-size-sm: 0.875rem;  /* 14px */
+  --font-size-base: 1rem;    /* 16px */
+  --font-size-lg: 1.125rem;  /* 18px */
+  --font-size-xl: 1.25rem;   /* 20px */
+  --font-size-2xl: 1.5rem;   /* 24px */
+  --font-size-3xl: 1.875rem; /* 30px */
+  --font-size-4xl: 2.25rem;  /* 36px */
+  
+  --font-weight-light: 300;
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+  
+  --line-height-tight: 1.25;
+  --line-height-normal: 1.5;
+  --line-height-relaxed: 1.75;
+  
+  /* ================================================= */
+  /* BORDER & RADIUS */
+  /* ================================================= */
+  --border-width: 1px;
+  --border-width-thick: 2px;
+  --border-color: #eceef1;
+  --border-color-dark: #dee2e6;
+  
+  --border-radius: 8px;
+  --border-radius-sm: 4px;
+  --border-radius-lg: 12px;
+  --border-radius-xl: 16px;
+  --border-radius-2xl: 20px;
+  --border-radius-full: 50%;
+  
+  /* ================================================= */
+  /* SHADOWS */
+  /* ================================================= */
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.05);
+  --shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  --shadow-md: 0 4px 20px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 8px 30px rgba(0, 0, 0, 0.12);
+  --shadow-xl: 0 20px 40px rgba(0, 0, 0, 0.15);
+  --shadow-2xl: 0 25px 50px rgba(0, 0, 0, 0.25);
+  
+  /* Colored shadows */
+  --shadow-primary: 0 4px 20px rgba(var(--primary-rgb), 0.3);
+  --shadow-success: 0 4px 20px rgba(var(--success-rgb), 0.3);
+  --shadow-info: 0 4px 20px rgba(var(--info-rgb), 0.3);
+  --shadow-warning: 0 4px 20px rgba(var(--warning-rgb), 0.3);
+  --shadow-danger: 0 4px 20px rgba(var(--danger-rgb), 0.3);
+  
+  /* ================================================= */
+  /* TRANSITIONS & ANIMATIONS */
+  /* ================================================= */
+  --transition-fast: all 0.15s ease;
+  --transition: all 0.2s ease;
+  --transition-slow: all 0.3s ease;
+  --transition-slower: all 0.5s ease;
+  
+  --transition-bounce: all 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+  --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  
+  /* Animation durations */
+  --duration-fast: 150ms;
+  --duration-normal: 200ms;
+  --duration-slow: 300ms;
+  --duration-slower: 500ms;
+  
+  /* ================================================= */
+  /* Z-INDEX SYSTEM */
+  /* ================================================= */
+  --z-dropdown: 1000;
+  --z-sticky: 1020;
+  --z-fixed: 1030;
+  --z-modal-backdrop: 1040;
+  --z-offcanvas: 1045;
+  --z-modal: 1050;
+  --z-popover: 1070;
+  --z-tooltip: 1080;
+  --z-notification: 9999;
+  
+  /* ================================================= */
+  /* FORM SPECIFIC */
+  /* ================================================= */
+  --input-height: 42px;
+  --input-height-sm: 32px;
+  --input-height-lg: 52px;
+  --input-padding-x: 12px;
+  --input-padding-y: 8px;
+  --input-border-color: var(--border-color);
+  --input-focus-border-color: var(--primary);
+  --input-focus-shadow: 0 0 0 3px rgba(var(--primary-rgb), 0.1);
+  
+  /* ================================================= */
+  /* BUTTON SPECIFIC */
+  /* ================================================= */
+  --btn-padding-x: 16px;
+  --btn-padding-y: 8px;
+  --btn-padding-x-sm: 12px;
+  --btn-padding-y-sm: 6px;
+  --btn-padding-x-lg: 20px;
+  --btn-padding-y-lg: 12px;
+  --btn-height: 40px;
+  --btn-height-sm: 32px;
+  --btn-height-lg: 48px;
+  
+  /* ================================================= */
+  /* DASHBOARD SPECIFIC */
+  /* ================================================= */
+  --dashboard-card-bg: var(--white);
+  --dashboard-card-border: 1px solid var(--border-color);
+  --dashboard-card-radius: var(--border-radius-lg);
+  --dashboard-card-shadow: var(--shadow-md);
+  --dashboard-card-hover-shadow: var(--shadow-lg);
+  
+  --stats-number-size: 2.5rem;
+  --stats-icon-size: 60px;
+  
+  /* ================================================= */
+  /* HEADER COLORS */
+  /* ================================================= */
+  --heading-color: #566a7f;
+  --text-color: #566a7f;
+  --text-muted: #a1acb8;
+  --axis-color: #a1acb8;
+  
+  /* ================================================= */
+  /* BACKDROP & OVERLAY */
+  /* ================================================= */
+  --backdrop-bg: rgba(0, 0, 0, 0.5);
+  --backdrop-blur: blur(4px);
+  --overlay-bg: rgba(255, 255, 255, 0.9);
+  
+  /* ================================================= */
+  /* SCROLLBAR STYLING */
+  /* ================================================= */
+  --scrollbar-width: 6px;
+  --scrollbar-track-bg: var(--gray-100);
+  --scrollbar-thumb-bg: var(--gray-400);
+  --scrollbar-thumb-hover-bg: var(--gray-500);
+}
+
+/* ================================================= */
+/* DARK MODE VARIABLES */
+/* ================================================= */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --light: #1a1d29;
+    --dark: #ffffff;
+    --dashboard-card-bg: #2d3348;
+    --border-color: #404558;
+    --text-color: #e4e6ea;
+    --text-muted: #a8b1bb;
+    --gray-100: #2d3348;
+    --gray-200: #404558;
+    --gray-300: #4a5568;
+  }
+}
+
+/* ================================================= */
+/* HIGH CONTRAST MODE */
+/* ================================================= */
+@media (prefers-contrast: high) {
+  :root {
+    --shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    --shadow-lg: 0 8px 30px rgba(0, 0, 0, 0.4);
+    --border-width: 2px;
+  }
+}
+
+/* ================================================= */
+/* REDUCED MOTION */
+/* ================================================= */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --transition: none;
+    --transition-fast: none;
+    --transition-slow: none;
+    --transition-bounce: none;
+    --duration-fast: 1ms;
+    --duration-normal: 1ms;
+    --duration-slow: 1ms;
+  }
+}

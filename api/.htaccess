@@ -1,0 +1,25 @@
+?>
+# API Security Headers
+Header always set X-Content-Type-Options nosniff
+Header always set X-Frame-Options DENY
+Header always set X-XSS-Protection "1; mode=block"
+
+# CORS Headers (ถ้าต้องการ)
+Header always set Access-Control-Allow-Origin "*"
+Header always set Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS"
+Header always set Access-Control-Allow-Headers "Content-Type, Authorization, X-CSRF-Token"
+
+# Rate Limiting (ถ้า server รองรับ)
+<RequireAll>
+    Require all granted
+    # จำกัด 100 requests ต่อนาที
+    # SetEnvIf Request_URI "^/api/" api_request=1
+    # Order allow,deny
+    # Allow from all
+</RequireAll>
+
+# Error Documents
+ErrorDocument 404 /api/error.php?code=404
+ErrorDocument 500 /api/error.php?code=500
+
+<?php
